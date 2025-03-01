@@ -8,7 +8,7 @@ import (
 	_ "github.com/expki/govecdb/env"
 )
 
-func FlattenJSON(data map[string]any) string {
+func FlattenMap(data map[string]any) string {
 	var result strings.Builder
 	flatten("", data, &result)
 	return result.String()

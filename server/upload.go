@@ -68,7 +68,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	logger.Sugar().Debugf("%d flattening files", txid)
 	req.Information = make([]string, len(req.Documents))
 	for idx, file := range req.Documents {
-		info := FlattenJSON(file)
+		info := FlattenMap(file)
 		if req.Prefix != "" {
 			info = fmt.Sprintf("%s %s", req.Prefix, info)
 		}

@@ -100,6 +100,54 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Internal exception"
+  /api/chat:
+    post:
+      tags:
+        - documents
+      summary: Chat about a document
+      description: |-
+        query → database → document → chat
+      operationId: chat
+      requestBody:
+        description: Chat about provided documents
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                The document is written in English
+        '400':
+          description: Invalid input
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                Invalid request
+        '405':
+          description: Invalid method
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                Invalid request method
+        '500':
+          description: Server exception
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                Internal exception
 components:
   schemas:
     ErrorResponse:
@@ -174,3 +222,34 @@ components:
             type: number
             format: float
           example: [0.95, 0.87]
+    ChatRequest:
+      type: object
+      required: ["text"]
+      properties:
+        prefix:
+          type: string
+          description: Add an optional prefix to the chat request.
+          example: "You are a helpful assistant"
+        history:
+          type: array
+          items:
+            type: string
+          description: A list of previous messages in the conversation.
+          example: ["Hello", "How are you?"]
+        text:
+          type: string
+          description: The current message to process in the chat request.
+          example: "Tell me about the document"
+        document_ids:
+          type: array
+          items:
+            type: integer
+          description: A list of document IDs to include as context for the chat request.
+          example: [1, 2]
+        documents:
+          type: array
+          items:
+            type: object
+          description: A list of documents to include as context for the chat request.
+          example: [{"story": "Once upon a time"}, {"another_story": "In another world"}]
+
