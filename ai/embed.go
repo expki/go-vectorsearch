@@ -50,7 +50,9 @@ func (ai *Ollama) Embed(ctx context.Context, request EmbedRequest) (response Emb
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+ai.token)
+	if ai.token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.token)
+	}
 	// Send request
 	resp, err := ai.client.Do(req)
 	if err != nil {
