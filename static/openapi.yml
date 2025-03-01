@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: API
+  description: |-
+    Local AI
+  version: 1.0.0
+tags:
+  - name: documents
+    description: Everything about documents
+paths:
+  /api/upload:
+    post:
+      tags:
+        - documents
+      summary: Uploads a document for embedding search
+      description: |-
+        document → formatted → embedding → database
+      operationId: upload
+      requestBody:
+        description: Upload one or more documents at a time
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid request"
+        '405':
+          description: Invalid method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid request method"
+        '500':
+          description: Server exception
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Internal exception"
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: A description of the exception encountered
+          example: "Invalid request"
+    UploadRequest:
+      type: object
+      required: ["files"]
+      properties:
+        prefix:
+          type: string
+          description: Add an optional prefix to the document
+          example: "Short Story"
+        files:
+          type: array
+          description: The documents to embed
+          items:
+            type: object
+          example: [{"story": "Once upon a time"}]
+    UploadResponse:
+      type: object
