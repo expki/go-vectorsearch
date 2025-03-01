@@ -9,5 +9,4 @@ fi
 if [ ! -f static/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
 fi
-go build -o gocvd .
-go build -ldflags "-X main.LOCK_THREAD=1" -tags='cuda' -o gocvd-cuda .
+ASSUME_NO_MOVING_GC_UNSAFE_RISK_IT_WITH=go1.24 go run .

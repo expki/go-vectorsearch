@@ -62,7 +62,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 		if req.Prefix != "" {
 			info = fmt.Sprintf("%s %s", req.Prefix, info)
 		}
-		req.Information[idx] = info
+		req.Information[idx] = fmt.Sprintf("search_document: %s", info)
 	}
 
 	// Get embeddings
