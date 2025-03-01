@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/expki/govecdb/ai"
@@ -16,7 +19,7 @@ import (
 
 type UploadRequest struct {
 	Prefix      string           `json:"prefix,omitempty"`
-	Files       []map[string]any `json:"files"`
+	Documents   []map[string]any `json:"documents"`
 	Information []string         `json:"-"`
 }
 
@@ -63,8 +66,8 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// Flatten each file and apply prefix
 	logger.Sugar().Debugf("%d flattening files", txid)
-	req.Information = make([]string, len(req.Files))
-	for idx, file := range req.Files {
+	req.Information = make([]string, len(req.Documents))
+	for idx, file := range req.Documents {
 		info := FlattenJSON(file)
 		if req.Prefix != "" {
 			info = fmt.Sprintf("%s %s", req.Prefix, info)
@@ -74,11 +77,17 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// Get embeddings
 	logger.Sugar().Debugf("%d request embeddings from ollama", txid)
-	embedRes, err := s.ai.Embed(ai.EmbedRequest{
+	embedRes, err := s.ai.Embed(r.Context(), ai.EmbedRequest{
 		Model: s.config.Ollama.Embed,
 		Input: req.Information,
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			logger.Sugar().Debugf("%d request canceled after %dms while embedding", txid, time.Since(start).Milliseconds())
+			w.WriteHeader(499)
+			io.WriteString(w, `{"error":"Client canceled request during generating embedding"}`)
+			return
+		}
 		logger.Sugar().Errorf("%d ai embed failed: %v", txid, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, `{"error":"Embedding failed"}`)
@@ -89,7 +98,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	logger.Sugar().Debugf("%d saving embeddings to database", txid)
 	embeddings := make([]database.Embedding, len(embedRes.Embeddings))
 	for idx, embedding := range embedRes.Embeddings.Underlying() {
-		file, _ := json.Marshal(req.Files[idx])
+		file, _ := json.Marshal(req.Documents[idx])
 		document := database.Document{
 			Prefix:   req.Prefix,
 			Document: file,
@@ -100,8 +109,14 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 		embeddings[idx] = embedding
 	}
-	result := s.db.Clauses(dbresolver.Write).Create(&embeddings)
+	result := s.db.Clauses(dbresolver.Write).WithContext(r.Context()).Create(&embeddings)
 	if result.Error != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			logger.Sugar().Debugf("%d request canceled after %dms while saving", txid, time.Since(start).Milliseconds())
+			w.WriteHeader(499)
+			io.WriteString(w, `{"error":"Client canceled request during record embedding"}`)
+			return
+		}
 		logger.Sugar().Errorf("%d database record failed: %v", txid, result.Error)
 		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, `{"error":"Record failed"}`)

@@ -2,10 +2,13 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/expki/govecdb/compute"
@@ -32,7 +35,7 @@ type EmbedResponse struct {
 	PromptEvalCount int        `json:"prompt_eval_count"`
 }
 
-func (ai *Ollama) Embed(request EmbedRequest) (response EmbedResponse, err error) {
+func (ai *Ollama) Embed(ctx context.Context, request EmbedRequest) (response EmbedResponse, err error) {
 	// Create request body
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -41,7 +44,7 @@ func (ai *Ollama) Embed(request EmbedRequest) (response EmbedResponse, err error
 	// Create request
 	uri := ai.uri
 	uri.Path = "/api/embed"
-	req, err := http.NewRequest("POST", uri.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -51,6 +54,9 @@ func (ai *Ollama) Embed(request EmbedRequest) (response EmbedResponse, err error
 	// Send request
 	resp, err := ai.client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return response, err
+		}
 		return response, fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()

@@ -2,10 +2,13 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/expki/govecdb/env"
@@ -41,7 +44,7 @@ type GenerateResponse struct {
 	EvalDuration       int64     `json:"eval_duration"`
 }
 
-func (ai *Ollama) Generate(request GenerateRequest) (response GenerateResponse, err error) {
+func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (response GenerateResponse, err error) {
 	// Create request body
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -50,7 +53,7 @@ func (ai *Ollama) Generate(request GenerateRequest) (response GenerateResponse, 
 	// Create request
 	uri := ai.uri
 	uri.Path = "/api/generate"
-	req, err := http.NewRequest("POST", uri.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -69,6 +72,9 @@ func (ai *Ollama) Generate(request GenerateRequest) (response GenerateResponse, 
 	// Read response
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return response, err
+		}
 		return response, fmt.Errorf("failed to read response body: %v", err)
 	}
 	err = json.Unmarshal(buf, &response)

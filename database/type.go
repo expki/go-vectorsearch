@@ -10,6 +10,11 @@ import (
 
 type DocumentField json.RawMessage
 
+func (d DocumentField) Map() (object map[string]any) {
+	json.Unmarshal(d, &object)
+	return object
+}
+
 // Scan scan value into DocumentField, implements sql.Scanner interface
 func (d *DocumentField) Scan(value any) error {
 	bytes, ok := value.([]byte)

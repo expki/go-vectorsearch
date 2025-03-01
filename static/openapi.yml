@@ -54,6 +54,52 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Internal exception"
+  /api/search:
+    post:
+      tags:
+        - documents
+      summary: Search for an document embedded
+      description: |-
+        query → embedding → database → document
+      operationId: search
+      requestBody:
+        description: Search for a set of similar documents
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid request"
+        '405':
+          description: Invalid method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid request method"
+        '500':
+          description: Server exception
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Internal exception"
 components:
   schemas:
     ErrorResponse:
@@ -65,13 +111,13 @@ components:
           example: "Invalid request"
     UploadRequest:
       type: object
-      required: ["files"]
+      required: ["documents"]
       properties:
         prefix:
           type: string
           description: Add an optional prefix to the document
           example: "Short Story"
-        files:
+        documents:
           type: array
           description: The documents to embed
           items:
@@ -86,3 +132,45 @@ components:
           items:
            type: integer
           example: [1, 2, 3]
+    SearchRequest:
+      type: object
+      required: ["text", "count"]
+      properties:
+        prefix:
+          type: string
+          description: Add an optional prefix to the search query
+        text:
+          type: string
+          description: Main text to search for
+        count:
+          type: integer
+          description: Number of results to return
+        offset:
+          type: integer
+          description: Starting point for the results set
+        no_documents:
+          type: boolean
+          description: Flag to indicate whether to include documents in the response
+      example: {"text": "Once upon a time", "count": 2}
+    SearchResponse:
+      type: object
+      properties:
+        documents:
+          type: array
+          description: A list of similar documents, if included in the request.
+          items:
+            type: object
+          example: [{"story": "Once upon a time"}, {"another_story": "In another world"}]
+        document_ids:
+          type: array
+          description: A list of IDs for the similar documents
+          items:
+           type: integer
+          example: [1, 2]
+        similarities:
+          type: array
+          description: A list of similarity scores corresponding to each document
+          items:
+            type: number
+            format: float
+          example: [0.95, 0.87]

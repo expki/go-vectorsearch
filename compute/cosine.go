@@ -1,14 +1,12 @@
 package compute
 
 import (
-	"fmt"
-
 	_ "github.com/expki/govecdb/env"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
 )
 
-func (vector Vector) CosineSimilarity(matrix Matrix) {
+func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	g := gorgonia.NewGraph()
 
 	// Input vector
@@ -44,5 +42,6 @@ func (vector Vector) CosineSimilarity(matrix Matrix) {
 		panic(err)
 	}
 
-	fmt.Println("GPU Cosine Similarities:", cosineSim.Value().Data())
+	// Return data
+	return cosineSim.Value().Data().([]float32)
 }

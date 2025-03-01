@@ -2,10 +2,13 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/expki/govecdb/env"
@@ -42,7 +45,7 @@ type ChatMessage struct {
 	ToolCalls []json.RawMessage `json:"tool_calls,omitempty"`
 }
 
-func (ai *Ollama) Chat(request ChatRequest) (response ChatResponse, err error) {
+func (ai *Ollama) Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error) {
 	// Create request body
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -51,7 +54,7 @@ func (ai *Ollama) Chat(request ChatRequest) (response ChatResponse, err error) {
 	// Create request
 	uri := ai.uri
 	uri.Path = "/api/chat"
-	req, err := http.NewRequest("POST", uri.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -61,6 +64,9 @@ func (ai *Ollama) Chat(request ChatRequest) (response ChatResponse, err error) {
 	// Send request
 	resp, err := ai.client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return response, err
+		}
 		return response, fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()

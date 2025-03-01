@@ -18,7 +18,10 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 	}
 
 	// open primary database connection
-	db, err = gorm.Open(readwrite[0], &gorm.Config{})
+	db, err = gorm.Open(readwrite[0], &gorm.Config{
+		SkipDefaultTransaction: true,
+		PrepareStmt:            true,
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}

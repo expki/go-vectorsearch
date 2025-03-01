@@ -31,7 +31,7 @@ var LOCK_THREAD string = "0"
 
 func init() {
 	if LOCK_THREAD == "1" {
-		runtime.LockOSThread() // cuda only works on main thread
+		runtime.LockOSThread()
 		log.Default().Println("Cuda runtime is locked to single thread")
 	}
 }
@@ -170,6 +170,7 @@ func main() {
 	// Routes
 	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(static.Files)))))
 	mux.HandleFunc("/api/upload", s.Upload)
+	mux.HandleFunc("/api/search", s.Search)
 
 	// Start servers
 	serverDone := make(chan struct{})
