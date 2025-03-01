@@ -79,3 +79,10 @@ components:
           example: [{"story": "Once upon a time"}]
     UploadResponse:
       type: object
+      properties:
+        document_ids:
+          type: array
+          description: A list of IDs for the uploaded documents
+          items:
+           type: integer
+          example: [1, 2, 3]

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/expki/govecdb/ai"
 	"github.com/expki/govecdb/database"
 	_ "github.com/expki/govecdb/env"
 	"github.com/expki/govecdb/logger"
+	"gorm.io/plugin/dbresolver"
 )
 
 type UploadRequest struct {
@@ -18,7 +20,12 @@ type UploadRequest struct {
 	Information []string         `json:"-"`
 }
 
+type UploadResponse struct {
+	DocumentIDs []uint `json:"document_ids"`
+}
+
 func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d upload request started", txid)
 	w.Header().Set("Content-Type", "application/json")
@@ -93,7 +100,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 		embeddings[idx] = embedding
 	}
-	result := s.db.Create(embeddings)
+	result := s.db.Clauses(dbresolver.Write).Create(&embeddings)
 	if result.Error != nil {
 		logger.Sugar().Errorf("%d database record failed: %v", txid, result.Error)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -101,8 +108,23 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create response
+	res := UploadResponse{
+		DocumentIDs: make([]uint, len(embeddings)),
+	}
+	for idx, embedding := range embeddings {
+		res.DocumentIDs[idx] = embedding.Document.ID
+	}
+	resBytes, err := json.Marshal(res)
+	if result.Error != nil {
+		logger.Sugar().Errorf("%d database response marshal failed: %v", txid, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"Response failed"}`)
+		return
+	}
+
 	// Set the response headers and write the JSON response
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, `{}`)
-	logger.Sugar().Infof("%d upload request suceeded", txid)
+	w.Write(resBytes)
+	logger.Sugar().Infof("%d upload request suceeded (%dms)", txid, time.Since(start).Milliseconds())
 }
