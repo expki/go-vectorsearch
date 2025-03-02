@@ -1,4 +1,1 @@
-gocvd
-gocvd-cuda
-config.json
-vectors.db
+build/

@@ -2,6 +2,7 @@ package database
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -23,7 +24,9 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 		PrepareStmt:            true,
 	})
 	if err != nil {
-		panic("failed to connect database")
+		logger.Sugar().Debugf("config: %+v", cfg)
+		logger.Sugar().Debugf("dsn: %+v", readwrite[0])
+		return nil, fmt.Errorf("failed to open database connection: %v", err)
 	}
 	db.Clauses(dbresolver.Write).AutoMigrate(
 		&Document{},
