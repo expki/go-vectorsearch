@@ -21,10 +21,14 @@ func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
 		return
 	}
 	for _, dsn := range c.Postgres {
-		readwrite = append(readwrite, postgres.Open(dsn))
+		if dsn != "" {
+			readwrite = append(readwrite, postgres.Open(dsn))
+		}
 	}
 	for _, dsn := range c.PostgresReadOnly {
-		readonly = append(readonly, postgres.Open(dsn))
+		if dsn != "" {
+			readonly = append(readonly, postgres.Open(dsn))
+		}
 	}
 	return
 }
