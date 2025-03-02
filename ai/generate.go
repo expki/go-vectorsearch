@@ -52,7 +52,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	// Create request
 	urlGroup := ai.Url()
 	uri := urlGroup.Get()
-	defer urlGroup.Done()
+	defer func() { urlGroup.Done() }()
 	uri.Path = "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
@@ -109,7 +109,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 		// Create request
 		urlGroup := ai.Url()
 		uri := urlGroup.Get()
-		defer urlGroup.Done()
+		defer func() { urlGroup.Done() }()
 		uri.Path = "/api/generate"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 		if err != nil {

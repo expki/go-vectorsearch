@@ -4,12 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync/atomic"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/logger"
 	"golang.org/x/net/http2"
 )
 
@@ -47,12 +50,18 @@ func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
 }
 
 func (o *Ollama) Url() *ollamaUrl {
+	uriList := slices.Clone(o.uri)
+	rand.Shuffle(len(uriList), func(i, j int) {
+		uriList[i], uriList[j] = uriList[j], uriList[i]
+	})
 	var best *ollamaUrl
 	var bestConns int64 = math.MaxInt64
-	for _, uri := range o.uri {
-		if uri.Connections() < bestConns {
+	for _, uri := range uriList {
+		conns := uri.Connections()
+		if conns < bestConns {
 			best = uri
 		}
+		logger.Sugar().Debugf("Ollama %s: %d", uri.uri.String(), conns)
 	}
 	return best
 }
