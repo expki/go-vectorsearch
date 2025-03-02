@@ -45,7 +45,7 @@ Not all configuration is required.
         "embed": "nomic-embed-text",
         "generate": "llama3.2",
         "chat": "llama3.2",
-	    "token": "bearer-auth-token-1234"
+        "token": "bearer-auth-token-1234"
     }
 }
 
