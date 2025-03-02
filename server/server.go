@@ -3,9 +3,9 @@ package server
 import (
 	"sync/atomic"
 
-	"github.com/expki/govecdb/ai"
-	"github.com/expki/govecdb/config"
-	_ "github.com/expki/govecdb/env"
+	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
 	"gorm.io/gorm"
 )
 

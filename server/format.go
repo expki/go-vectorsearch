@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 func FlattenMap(data map[string]any) string {

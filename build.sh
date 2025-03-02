@@ -13,8 +13,9 @@ fi
 if [ ! -f static/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
 fi
-GOOS=linux GOARCH=amd64 go build -tags='avx' -o gocvd .
+mkdir -p build
+GOOS=linux GOARCH=amd64 go build -tags='avx' -o build/gocvd .
 if command -v nvcc &> /dev/null; then
-    GOOS=linux GOARCH=amd64 go build -ldflags "-X main.LOCK_THREAD=1" -tags='cuda' -o gocvd-cuda .
+    GOOS=linux GOARCH=amd64 go build -ldflags "-X main.LOCK_THREAD=1" -tags='cuda' -o build/gocvd-cuda .
 fi
 echo "Build completed."

@@ -3,9 +3,9 @@ package database
 import (
 	"errors"
 
-	"github.com/expki/govecdb/config"
-	_ "github.com/expki/govecdb/env"
-	"github.com/expki/govecdb/logger"
+	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/logger"
 	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )

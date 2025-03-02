@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 // CreateSample creates a sample configuration file.

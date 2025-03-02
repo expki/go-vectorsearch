@@ -11,9 +11,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/expki/govecdb/compute"
-	"github.com/expki/govecdb/config"
-	_ "github.com/expki/govecdb/env"
+	"github.com/expki/go-vectorsearch/compute"
+	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 type EmbedRequest struct {

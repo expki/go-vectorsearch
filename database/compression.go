@@ -1,7 +1,7 @@
 package database
 
 import (
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/klauspost/compress/zstd"
 )
 

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 type algorithm uint8

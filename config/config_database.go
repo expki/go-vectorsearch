@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/expki/govecdb/config"
-	_ "github.com/expki/govecdb/env"
+	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
 	"golang.org/x/net/http2"
 )
 

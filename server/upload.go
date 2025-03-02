@@ -10,10 +10,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/expki/govecdb/ai"
-	"github.com/expki/govecdb/database"
-	_ "github.com/expki/govecdb/env"
-	"github.com/expki/govecdb/logger"
+	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/database"
+	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/logger"
 	"gorm.io/plugin/dbresolver"
 )
 

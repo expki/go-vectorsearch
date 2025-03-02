@@ -1,4 +1,4 @@
-module github.com/expki/govecdb
+module github.com/expki/go-vectorsearch
 
 go 1.24.0
 

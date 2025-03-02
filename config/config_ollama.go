@@ -1,7 +1,7 @@
 package config
 
 import (
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 type Ollama struct {

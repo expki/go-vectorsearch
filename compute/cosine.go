@@ -1,7 +1,7 @@
 package compute
 
 import (
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
 )

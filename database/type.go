@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	_ "github.com/expki/govecdb/env"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 type DocumentField json.RawMessage
