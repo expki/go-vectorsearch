@@ -21,7 +21,7 @@ func CreateSample(path string) error {
 			Certificates:     []*ConfigTLSPath{},
 		},
 		Ollama: Ollama{
-			Url:      "http://localhost:11434",
+			Url:      []string{"http://localhost:11434"},
 			Embed:    "nomic-embed-text",
 			Generate: "llama3.2",
 			Chat:     "llama3.2",

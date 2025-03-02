@@ -5,9 +5,9 @@ import (
 )
 
 type Ollama struct {
-	Url      string `json:"url"`
-	Token    string `json:"token"`
-	Embed    string `json:"embed"`
-	Generate string `json:"generate"`
-	Chat     string `json:"chat"`
+	Url      SingleOrSlice[string] `json:"url"`
+	Token    string                `json:"token"`
+	Embed    string                `json:"embed"`
+	Generate string                `json:"generate"`
+	Chat     string                `json:"chat"`
 }
