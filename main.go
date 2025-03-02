@@ -70,11 +70,14 @@ func main() {
 
 	// Logger
 	log.Default().Println("Loading logger...")
-	l, err := zap.NewDevelopment()
+	logConf := zap.NewDevelopmentConfig()
+	logConf.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	l, err := logConf.Build()
 	if err != nil {
 		log.Fatalf("zap.NewDevelopment: %v", err)
 	}
 	logger.Initialize(l)
+	defer l.Sync()
 
 	// Database
 	logger.Sugar().Debug("Loading database...")
