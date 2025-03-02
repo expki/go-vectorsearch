@@ -42,9 +42,8 @@ func (ai *Ollama) Embed(ctx context.Context, request EmbedRequest) (response Emb
 		return response, fmt.Errorf("failed to marshal request body: %v", err)
 	}
 	// Create request
-	urlGroup := ai.Url()
-	uri := urlGroup.Get()
-	defer func() { urlGroup.Done() }()
+	uri, uriDone := ai.Url()
+	defer uriDone()
 	uri.Path = "/api/embed"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {

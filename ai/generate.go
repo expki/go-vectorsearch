@@ -50,9 +50,8 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 		return response, fmt.Errorf("failed to marshal request body: %v", err)
 	}
 	// Create request
-	urlGroup := ai.Url()
-	uri := urlGroup.Get()
-	defer func() { urlGroup.Done() }()
+	uri, uriDone := ai.Url()
+	defer uriDone()
 	uri.Path = "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
@@ -107,9 +106,8 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 			writer.CloseWithError(fmt.Errorf("failed to marshal request body: %v", err))
 		}
 		// Create request
-		urlGroup := ai.Url()
-		uri := urlGroup.Get()
-		defer func() { urlGroup.Done() }()
+		uri, uriDone := ai.Url()
+		defer uriDone()
 		uri.Path = "/api/generate"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 		if err != nil {
