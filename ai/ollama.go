@@ -52,7 +52,6 @@ func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
 
 func (o *Ollama) Url() (uri url.URL, done func()) {
 	o.lock.Lock()
-	defer o.lock.Unlock()
 	uriList := slices.Clone(o.uri)
 	rand.Shuffle(len(uriList), func(i, j int) {
 		uriList[i], uriList[j] = uriList[j], uriList[i]
@@ -63,13 +62,18 @@ func (o *Ollama) Url() (uri url.URL, done func()) {
 		conns := uri.Connections()
 		if conns < bestConns {
 			best = uri
+			bestConns = conns
 		}
 		logger.Sugar().Debugf("Ollama %s: %d", uri.uri.String(), conns)
 	}
-	return best.Get(), func() {
+	newconn := best.Get()
+	o.lock.Unlock()
+	logger.Sugar().Debugf("Ollama %s++", newconn.String())
+	return newconn, func() {
 		o.lock.Lock()
 		best.Done()
 		o.lock.Unlock()
+		logger.Sugar().Debugf("Ollama %s--", newconn.String())
 	}
 }
 
