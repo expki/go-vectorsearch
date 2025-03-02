@@ -35,6 +35,7 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 
 	// add resolver connections
 	if len(readonly)+len(readwrite) > 1 {
+		logger.Sugar().Debugf("Enabling database resolver for read/write splitting. Sources: %d, Replicas: %d", len(readwrite), len(readonly))
 		err = db.Use(dbresolver.Register(dbresolver.Config{
 			Sources:           readwrite,
 			Replicas:          readonly,
