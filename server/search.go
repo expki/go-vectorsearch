@@ -15,6 +15,7 @@ import (
 
 	"github.com/expki/go-vectorsearch/ai"
 	"github.com/expki/go-vectorsearch/compute"
+	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
@@ -109,13 +110,13 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Scan embeddings from cache
-	barCache := progressbar.Default(-1, "Searching cache...")
+	barCache := progressbar.Default(int64(s.db.Cache.Count()), "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset)
-	cacheStream := s.db.Cache.ReadInBatches(r.Context(), 1000)
+	cacheStream := s.db.Cache.ReadInBatches(r.Context())
 	for matrixPointer := range cacheStream {
 		matrixFull := *matrixPointer
 		matrix := make([][]uint8, len(matrixFull))
@@ -139,9 +140,23 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	barCache.Finish()
 
 	// Scan embeddings from database
-	barDatabase := progressbar.Default(-1, "Searching database...")
+	var total int64
+	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Model(&database.Document{}).Where("updated_at > ?", s.db.Cache.LastUpdated()).Count(&total)
+	if result.Error != nil {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			logger.Sugar().Debugf("%d request canceled after %dms while counting embeddings", txid, time.Since(start).Milliseconds())
+			w.WriteHeader(499)
+			io.WriteString(w, `{"error":"Client canceled request during counting records"}`)
+			return
+		}
+		logger.Sugar().Errorf("%d database vector count retrieval failed: %v", txid, result.Error)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"Counting records failed"}`)
+		return
+	}
+	barDatabase := progressbar.Default(total, "Searching database...")
 	var batch []database.Document
-	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("vector", "id").Where("updated_at > ?", s.db.Cache.LastUpdated()).FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
+	result = s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("vector", "id").Where("updated_at > ?", s.db.Cache.LastUpdated()).FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = result.Vector.Underlying()
@@ -162,7 +177,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	barDatabase.Finish()
-	if result.Error != nil {
+	if result.Error != nil && err != gorm.ErrRecordNotFound {
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while scanning embeddings", txid, time.Since(start).Milliseconds())
 			w.WriteHeader(499)

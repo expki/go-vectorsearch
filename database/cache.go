@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/klauspost/compress/zstd"
 	"github.com/schollz/progressbar/v3"
@@ -67,16 +68,44 @@ func (c *Cache) LastUpdated() time.Time {
 	return date
 }
 
-func (c *Cache) ReadInBatches(ctx context.Context, batchSize int) <-chan *[][]uint8 {
+func (c *Cache) Count() uint64 {
 	// prevent other file operations
 	c.fileLock.Lock()
-	stream := make(chan *[][]uint8, 3)
+	defer c.fileLock.Unlock()
+
+	// move to start of file
+	c.file.Seek(0, io.SeekStart)
+
+	// read the date + count
+	headerBytes := make([]byte, 16)
+	_, err := io.ReadFull(c.file, headerBytes)
+
+	// if error is EOF, return empty time.Time
+	if err == io.EOF {
+		return 0
+	}
+
+	// if error is not nil, fatal
+	if err != nil {
+		logger.Sugar().Fatalf("Failed to read count from cache file: %v", err)
+	}
+
+	// parse the epoch
+	count := binary.LittleEndian.Uint64(headerBytes[8:])
+
+	return count
+}
+
+func (c *Cache) ReadInBatches(ctx context.Context) <-chan *[][]uint8 {
+	// prevent other file operations
+	c.fileLock.Lock()
+	stream := make(chan *[][]uint8, config.STREAM_QUEUE_SIZE)
 	go func(c *Cache) {
 		defer c.fileLock.Unlock()
 		defer close(stream)
 
-		// move to start of file after date
-		c.file.Seek(8, io.SeekStart)
+		// move to start of file after date & count
+		c.file.Seek(16, io.SeekStart)
 
 		// create decoder
 		decoder, err := zstd.NewReader(
@@ -87,7 +116,7 @@ func (c *Cache) ReadInBatches(ctx context.Context, batchSize int) <-chan *[][]ui
 		if err != nil {
 			logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
 		}
-		decoderBuffer := bufio.NewReaderSize(decoder, c.vectorSize*batchSize)
+		decoderBuffer := bufio.NewReaderSize(decoder, c.vectorSize*config.BATCH_SIZE_CACHE)
 
 		// read the data
 		for {
@@ -99,8 +128,8 @@ func (c *Cache) ReadInBatches(ctx context.Context, batchSize int) <-chan *[][]ui
 			}
 
 			// read batch
-			batch := make([][]uint8, 0, batchSize)
-			for range batchSize {
+			batch := make([][]uint8, 0, config.BATCH_SIZE_CACHE)
+			for range config.BATCH_SIZE_CACHE {
 				// read row
 				row := make([]uint8, c.vectorSize+8)
 				_, err := io.ReadFull(decoderBuffer, row)
@@ -132,25 +161,37 @@ func (c *Cache) ReadInBatches(ctx context.Context, batchSize int) <-chan *[][]ui
 	return stream
 }
 
-func (c *Cache) WriteInBatches(batchSize int, stream <-chan *[][]uint8) {
+func (c *Cache) WriteInBatches(total uint64, stream <-chan *[][]uint8) {
 	// prevent other file operations
+
 	c.fileLock.Lock()
+
 	go func(c *Cache) {
 		defer c.fileLock.Unlock()
 
 		// move to start of file
+
 		c.file.Seek(0, io.SeekStart)
 
 		// clear file
+
 		c.file.Truncate(0)
 
 		// write current date
+
 		epoch := time.Now().Unix()
 		epochBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(epochBytes, uint64(epoch))
 		c.file.Write(epochBytes)
 
+		// write total count
+
+		totalBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(totalBytes, total)
+		c.file.Write(totalBytes)
+
 		// create encoder
+
 		encoder, err := zstd.NewWriter(
 			c.file,
 			zstd.WithEncoderLevel(zstd.SpeedFastest),
@@ -162,27 +203,34 @@ func (c *Cache) WriteInBatches(batchSize int, stream <-chan *[][]uint8) {
 		if err != nil {
 			logger.Sugar().Fatalf("Failed to create zstd cache encoder: %v", err)
 		}
-		encoderBuffer := bufio.NewWriterSize(encoder, c.vectorSize*batchSize)
+
+		encoderBuffer := bufio.NewWriterSize(encoder, c.vectorSize*config.BATCH_SIZE_DATABASE)
 
 		// write the data
 		for {
 			// read batch
-			batchPointer, done := <-stream
+
+			batchPointer, ok := <-stream
+
 			if batchPointer == nil {
+
 				break
 			}
 
 			for _, row := range *batchPointer {
+
 				encoderBuffer.Write(row)
 			}
 
-			if done {
+			if !ok {
+
 				break
 			}
 		}
 		encoderBuffer.Flush()
 		encoder.Close()
 		c.file.Sync()
+
 	}(c)
 }
 
@@ -193,10 +241,6 @@ func (c *Cache) Close() error {
 }
 
 func (db *Database) RefreshCache(ctx context.Context) error {
-	stream := make(chan *[][]uint8, 3)
-	defer close(stream)
-	db.Cache.WriteInBatches(1000, stream)
-
 	var total int64
 	result := db.Clauses(dbresolver.Read).WithContext(ctx).Model(&Document{}).Count(&total)
 	if result.Error != nil {
@@ -206,18 +250,27 @@ func (db *Database) RefreshCache(ctx context.Context) error {
 		logger.Sugar().Errorf("database vector count retrieval failed: %v", result.Error)
 		return result.Error
 	}
+	if total == 0 {
+		logger.Sugar().Debug("database is empty")
+		return nil
+	}
+
+	stream := make(chan *[][]uint8, config.STREAM_QUEUE_SIZE)
+	defer close(stream)
+	db.Cache.WriteInBatches(uint64(total), stream)
 
 	bar := progressbar.Default(total, "Refreshing Cache")
 	var batch []Document
-	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
+	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = make([]byte, 8, 8+len(result.Vector))
 			binary.LittleEndian.PutUint64(matrix[idx], result.ID)
 			matrix[idx] = append(matrix[idx], result.Vector...)
 		}
+
 		stream <- &matrix
-		bar.Add(n)
+		bar.Add(len(matrix))
 		return nil
 	})
 	if result.Error != nil {

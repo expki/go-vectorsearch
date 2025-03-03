@@ -61,3 +61,17 @@ func New(cfg config.Database, vectorSize int) (db *Database, err error) {
 
 	return &Database{DB: godb, Cache: cache}, nil
 }
+
+func (d *Database) Close() error {
+	db, err := d.DB.DB()
+	if err != nil {
+		logger.Sugar().Errorf("failed to get database connection: %v", err)
+		return err
+	}
+	err = db.Close()
+	if err != nil {
+		logger.Sugar().Errorf("failed to close database connection: %v", err)
+		return err
+	}
+	return nil
+}

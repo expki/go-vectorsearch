@@ -230,6 +230,7 @@ func main() {
 	server.Close()
 	server2.Close()
 	stopApp()
+	db.Close()
 	logger.Sugar().Info("Server stopped")
 }
 
