@@ -7,16 +7,9 @@ import (
 )
 
 type Document struct {
-	ID        uint      `gorm:"primarykey"`
+	ID        uint64    `gorm:"primarykey"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 	Prefix    string
 	Document  DocumentField
-}
-
-type Embedding struct {
-	ID     uint `gorm:"primarykey"`
-	Vector VectorField
-
-	DocumentID uint     `gorm:"index"`
-	Document   Document `gorm:"foreignKey:DocumentID;references:ID"`
+	Vector    VectorField
 }

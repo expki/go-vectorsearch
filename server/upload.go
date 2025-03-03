@@ -24,7 +24,7 @@ type UploadRequest struct {
 }
 
 type UploadResponse struct {
-	DocumentIDs []uint `json:"document_ids"`
+	DocumentIDs []uint64 `json:"document_ids"`
 }
 
 func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
@@ -95,26 +95,23 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save embeddings and documents
-	logger.Sugar().Debugf("%d saving embeddings to database", txid)
-	embeddings := make([]database.Embedding, len(embedRes.Embeddings))
+	logger.Sugar().Debugf("%d saving documents to database", txid)
+	documents := make([]database.Document, len(embedRes.Embeddings))
 	for idx, embedding := range embedRes.Embeddings.Underlying() {
 		file, _ := json.Marshal(req.Documents[idx])
-		document := database.Document{
+		embedding := database.Document{
+			Vector:   embedding,
 			Prefix:   req.Prefix,
 			Document: file,
 		}
-		embedding := database.Embedding{
-			Vector:   embedding,
-			Document: document,
-		}
-		embeddings[idx] = embedding
+		documents[idx] = embedding
 	}
-	result := s.db.Clauses(dbresolver.Write).WithContext(r.Context()).Create(&embeddings)
+	result := s.db.Clauses(dbresolver.Write).WithContext(r.Context()).Create(&documents)
 	if result.Error != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while saving", txid, time.Since(start).Milliseconds())
 			w.WriteHeader(499)
-			io.WriteString(w, `{"error":"Client canceled request during record embedding"}`)
+			io.WriteString(w, `{"error":"Client canceled request during record document"}`)
 			return
 		}
 		logger.Sugar().Errorf("%d database record failed: %v", txid, result.Error)
@@ -125,10 +122,10 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// Create response
 	res := UploadResponse{
-		DocumentIDs: make([]uint, len(embeddings)),
+		DocumentIDs: make([]uint64, len(documents)),
 	}
-	for idx, embedding := range embeddings {
-		res.DocumentIDs[idx] = embedding.Document.ID
+	for idx, embedding := range documents {
+		res.DocumentIDs[idx] = embedding.ID
 	}
 	resBytes, err := json.Marshal(res)
 	if result.Error != nil {

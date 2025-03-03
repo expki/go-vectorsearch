@@ -31,7 +31,7 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Documents    []map[string]any `json:"documents,omitempty"`
-	DocumentIDs  []uint           `json:"document_ids"`
+	DocumentIDs  []uint64         `json:"document_ids"`
 	Similarities []float32        `json:"similarities"`
 }
 
@@ -108,12 +108,12 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 
 	// Scan embeddings from database
 	type item struct {
-		DocumentID uint
+		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset)
-	var batch []database.Embedding
-	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("Vector", "DocumentID").FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
+	var batch []database.Document
+	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("Vector", "ID").FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = result.Vector.Underlying()
@@ -123,7 +123,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			mostSimilar[0] = item{
-				DocumentID: batch[idx].DocumentID,
+				DocumentID: batch[idx].ID,
 				Similarity: similarity,
 			}
 			slices.SortFunc(mostSimilar, func(a, b item) int {
@@ -149,7 +149,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch most similar documents
 	var documents []database.Document
-	ids := make([]uint, 0, len(mostSimilar))
+	ids := make([]uint64, 0, len(mostSimilar))
 	for _, item := range mostSimilar {
 		if item.DocumentID != 0 {
 			ids = append(ids, item.DocumentID)
@@ -172,7 +172,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	// Create response
 	res := SearchResponse{
 		Documents:    make([]map[string]any, req.Count),
-		DocumentIDs:  make([]uint, req.Count),
+		DocumentIDs:  make([]uint64, req.Count),
 		Similarities: make([]float32, req.Count),
 	}
 	for idx, item := range mostSimilar {

@@ -30,7 +30,6 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 	}
 	db.Clauses(dbresolver.Write).AutoMigrate(
 		&Document{},
-		&Embedding{},
 	)
 
 	// add resolver connections
