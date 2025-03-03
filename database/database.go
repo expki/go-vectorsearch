@@ -11,7 +11,12 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
-func New(cfg config.Database) (db *gorm.DB, err error) {
+type Database struct {
+	*gorm.DB
+	Cache *Cache
+}
+
+func New(cfg config.Database, vectorSize int) (db *Database, err error) {
 	// get dialectors from config
 	readwrite, readonly := cfg.GetDialectors()
 	if len(readwrite) == 0 {
@@ -19,7 +24,7 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 	}
 
 	// open primary database connection
-	db, err = gorm.Open(readwrite[0], &gorm.Config{
+	godb, err := gorm.Open(readwrite[0], &gorm.Config{
 		SkipDefaultTransaction: true,
 		PrepareStmt:            true,
 	})
@@ -28,14 +33,14 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 		logger.Sugar().Debugf("dsn: %+v", readwrite[0])
 		return nil, fmt.Errorf("failed to open database connection: %v", err)
 	}
-	db.Clauses(dbresolver.Write).AutoMigrate(
+	godb.Clauses(dbresolver.Write).AutoMigrate(
 		&Document{},
 	)
 
 	// add resolver connections
 	if len(readonly)+len(readwrite) > 1 {
 		logger.Sugar().Debugf("Enabling database resolver for read/write splitting. Sources: %d, Replicas: %d", len(readwrite), len(readonly))
-		err = db.Use(dbresolver.Register(dbresolver.Config{
+		err = godb.Use(dbresolver.Register(dbresolver.Config{
 			Sources:           readwrite,
 			Replicas:          readonly,
 			Policy:            dbresolver.StrictRoundRobinPolicy(),
@@ -46,5 +51,13 @@ func New(cfg config.Database) (db *gorm.DB, err error) {
 			return nil, err
 		}
 	}
-	return db, nil
+
+	// open cache
+	cache, err := NewCache(cfg.Cache, vectorSize)
+	if err != nil {
+		logger.Sugar().Errorf("failed to load cache: %v", err)
+		return nil, err
+	}
+
+	return &Database{DB: godb, Cache: cache}, nil
 }

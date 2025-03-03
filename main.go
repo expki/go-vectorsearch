@@ -79,18 +79,29 @@ func main() {
 	logger.Initialize(l)
 	defer l.Sync()
 
-	// Database
-	logger.Sugar().Debug("Loading database...")
-	db, err := database.New(cfg.Database)
-	if err != nil {
-		logger.Sugar().Fatalf("database.New: %v", err)
-	}
-
 	// AI
 	log.Default().Println("Loading AI...")
 	ollama, err := ai.NewOllama(cfg.Ollama)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
+	}
+	test, err := ollama.Embed(appCtx, ai.EmbedRequest{Model: cfg.Ollama.Embed, Input: []string{"Test"}})
+	if err != nil || len(test.Embeddings) == 0 {
+		logger.Sugar().Fatalf("ollama.Embed: %v", err)
+	}
+
+	// Database
+	logger.Sugar().Debug("Loading database...")
+	db, err := database.New(cfg.Database, len(test.Embeddings.Underlying()[0]))
+	if err != nil {
+		logger.Sugar().Fatalf("database.New: %v", err)
+	}
+
+	// Cache
+	logger.Sugar().Debug("Refreshing cache...")
+	err = db.RefreshCache(appCtx)
+	if err != nil {
+		logger.Sugar().Fatalf("database.Cache: %v", err)
 	}
 
 	// Server

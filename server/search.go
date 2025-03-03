@@ -3,6 +3,7 @@ package server
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
+	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )
@@ -106,19 +108,46 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
-	// Scan embeddings from database
+	// Scan embeddings from cache
+	barCache := progressbar.Default(-1, "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset)
+	cacheStream := s.db.Cache.ReadInBatches(r.Context(), 1000)
+	for matrixPointer := range cacheStream {
+		matrixFull := *matrixPointer
+		matrix := make([][]uint8, len(matrixFull))
+		for idx, row := range matrixFull {
+			matrix[idx] = row[8:]
+		}
+		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
+			barCache.Add(1)
+			if similarity < mostSimilar[0].Similarity {
+				continue
+			}
+			mostSimilar[0] = item{
+				DocumentID: binary.LittleEndian.Uint64(matrixFull[idx][:8]),
+				Similarity: similarity,
+			}
+			slices.SortFunc(mostSimilar, func(a, b item) int {
+				return cmp.Compare(a.Similarity, b.Similarity)
+			})
+		}
+	}
+	barCache.Finish()
+
+	// Scan embeddings from database
+	barDatabase := progressbar.Default(-1, "Searching database...")
 	var batch []database.Document
-	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("Vector", "ID").FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
+	result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Select("vector", "id").Where("updated_at > ?", s.db.Cache.LastUpdated()).FindInBatches(&batch, 1000, func(tx *gorm.DB, n int) error {
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = result.Vector.Underlying()
 		}
 		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
+			barDatabase.Add(1)
 			if similarity < mostSimilar[0].Similarity {
 				continue
 			}
@@ -132,8 +161,9 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+	barDatabase.Finish()
 	if result.Error != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while scanning embeddings", txid, time.Since(start).Milliseconds())
 			w.WriteHeader(499)
 			io.WriteString(w, `{"error":"Client canceled request during scanning records"}`)
