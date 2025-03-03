@@ -12,7 +12,6 @@ import (
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
-	"github.com/expki/go-vectorsearch/logger"
 	"golang.org/x/net/http2"
 )
 
@@ -64,16 +63,13 @@ func (o *Ollama) Url() (uri url.URL, done func()) {
 			best = uri
 			bestConns = conns
 		}
-		logger.Sugar().Debugf("Ollama %s: %d", uri.uri.String(), conns)
 	}
 	newconn := best.Get()
 	o.lock.Unlock()
-	logger.Sugar().Debugf("Ollama %s++", newconn.String())
 	return newconn, func() {
 		o.lock.Lock()
 		best.Done()
 		o.lock.Unlock()
-		logger.Sugar().Debugf("Ollama %s--", newconn.String())
 	}
 }
 
