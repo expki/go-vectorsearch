@@ -99,6 +99,6 @@ func (e *EmbeddingValue) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*e = EmbeddingValue(compute.Float32ToUint8(value, -1, 1))
+	*e = EmbeddingValue(compute.Quantize(value, -1, 1))
 	return nil
 }

@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/klauspost/compress v1.18.0
+	github.com/schollz/progressbar/v3 v3.18.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.35.0
 	gorgonia.org/gorgonia v0.9.18
@@ -34,7 +35,6 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/schollz/progressbar/v3 v3.18.0 // indirect
 	github.com/xtgo/set v1.0.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
