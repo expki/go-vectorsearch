@@ -1,6 +1,10 @@
 package config
 
-import "go.uber.org/zap"
+import (
+	"strings"
+
+	"go.uber.org/zap"
+)
 
 type LogLevel string
 
@@ -18,18 +22,18 @@ func (l LogLevel) String() string {
 }
 
 func (l LogLevel) Zap() zap.AtomicLevel {
-	switch l {
-	case LogLevelDebug, "trace":
+	switch strings.ToLower(strings.TrimSpace(l.String())) {
+	case LogLevelDebug.String(), "trace":
 		return zap.NewAtomicLevelAt(zap.DebugLevel)
-	case LogLevelInfo, "information", "notice":
+	case LogLevelInfo.String(), "information", "notice":
 		return zap.NewAtomicLevelAt(zap.InfoLevel)
-	case LogLevelWarn, "warning":
+	case LogLevelWarn.String(), "warning", "alert":
 		return zap.NewAtomicLevelAt(zap.WarnLevel)
-	case LogLevelError:
+	case LogLevelError.String():
 		return zap.NewAtomicLevelAt(zap.ErrorLevel)
-	case LogLevelFatal:
+	case LogLevelFatal.String(), "critical", "emergency":
 		return zap.NewAtomicLevelAt(zap.FatalLevel)
-	case LogLevelPanic:
+	case LogLevelPanic.String():
 		return zap.NewAtomicLevelAt(zap.PanicLevel)
 	default:
 		return zap.NewAtomicLevelAt(zap.ErrorLevel)
