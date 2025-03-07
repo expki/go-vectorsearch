@@ -32,6 +32,6 @@ func (l LogLevel) Zap() zap.AtomicLevel {
 	case LogLevelPanic:
 		return zap.NewAtomicLevelAt(zap.PanicLevel)
 	default:
-		return zap.NewAtomicLevelAt(zap.InfoLevel)
+		return zap.NewAtomicLevelAt(zap.ErrorLevel)
 	}
 }
