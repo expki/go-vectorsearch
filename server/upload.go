@@ -69,9 +69,11 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// Flatten each file and apply prefix
 	logger.Sugar().Debugf("%d flattening files", txid)
+	flattenedFiles := make([]string, len(req.Documents))
 	req.Information = make([]string, len(req.Documents))
 	for idx, file := range req.Documents {
 		info := Flatten(file)
+		flattenedFiles[idx] = info
 		if req.Prefix != "" {
 			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
 		}
@@ -106,7 +108,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 			Vector:   embedding,
 			Prefix:   req.Prefix,
 			Document: file,
-			Hash:     strconv.FormatUint(xxhash.Sum64(file), 36),
+			Hash:     strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
 		}
 		documents[idx] = embedding
 	}
