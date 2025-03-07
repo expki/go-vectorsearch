@@ -209,21 +209,17 @@ func (c *Cache) WriteInBatches(total uint64, stream <-chan *[][]uint8) {
 		// write the data
 		for {
 			// read batch
-
-			batchPointer, ok := <-stream
+			batchPointer, hasMore := <-stream
 
 			if batchPointer == nil {
-
 				break
 			}
 
 			for _, row := range *batchPointer {
-
 				encoderBuffer.Write(row)
 			}
 
-			if !ok {
-
+			if !hasMore {
 				break
 			}
 		}
