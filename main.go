@@ -71,7 +71,7 @@ func main() {
 	// Logger
 	log.Default().Println("Loading logger...")
 	logConf := zap.NewDevelopmentConfig()
-	logConf.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	logConf.Level = cfg.LogLevel.Zap()
 	l, err := logConf.Build()
 	if err != nil {
 		log.Fatalf("zap.NewDevelopment: %v", err)

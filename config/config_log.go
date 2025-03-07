@@ -5,12 +5,12 @@ import "go.uber.org/zap"
 type LogLevel string
 
 const (
-	LogLevelDebug   LogLevel = "debug"
-	LogLevelInfo    LogLevel = "info"
-	LogLevelWarning LogLevel = "warning"
-	LogLevelError   LogLevel = "error"
-	LogLevelFatal   LogLevel = "fatal"
-	LogLevelPanic   LogLevel = "panic"
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+	LogLevelFatal LogLevel = "fatal"
+	LogLevelPanic LogLevel = "panic"
 )
 
 func (l LogLevel) String() string {
@@ -19,11 +19,11 @@ func (l LogLevel) String() string {
 
 func (l LogLevel) Zap() zap.AtomicLevel {
 	switch l {
-	case LogLevelDebug:
+	case LogLevelDebug, "trace":
 		return zap.NewAtomicLevelAt(zap.DebugLevel)
-	case LogLevelInfo:
+	case LogLevelInfo, "information", "notice":
 		return zap.NewAtomicLevelAt(zap.InfoLevel)
-	case LogLevelWarning:
+	case LogLevelWarn, "warning":
 		return zap.NewAtomicLevelAt(zap.WarnLevel)
 	case LogLevelError:
 		return zap.NewAtomicLevelAt(zap.ErrorLevel)
