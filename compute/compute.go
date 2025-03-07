@@ -16,7 +16,10 @@ func NewTensor(vector []uint8) Vector {
 	}
 }
 
-type Matrix struct{ Dense *tensor.Dense }
+type Matrix struct {
+	Dense *tensor.Dense
+	Shape tensor.Shape
+}
 
 func NewMatrix(matrix [][]uint8) Matrix {
 	if len(matrix) == 0 || len(matrix[0]) == 0 {
@@ -28,5 +31,6 @@ func NewMatrix(matrix [][]uint8) Matrix {
 	}
 	return Matrix{
 		Dense: tensor.New(tensor.WithBacking(vector), tensor.WithShape(len(matrix), len(matrix[0]))),
+		Shape: tensor.Shape{len(matrix), len(matrix[0])},
 	}
 }
