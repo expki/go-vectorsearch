@@ -14,7 +14,7 @@ func Quantize(value float32, min float32, max float32) (valueQuantized uint8) {
 
 func Dequantize(valueQuantized uint8, min float32, max float32) (value float32) {
 	// Normalize the uint8 value to the range [0, 1]
-	normalized := float32(value) / 255.0
+	normalized := float32(valueQuantized) / 255.0
 	// Scale back to the original range [min, max]
 	return min + normalized*(max-min)
 }
