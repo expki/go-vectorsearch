@@ -22,6 +22,7 @@ type Config struct {
 	Database Database     `json:"database"`
 	Ollama   Ollama       `json:"ollama"`
 	Cache    string       `json:"cache"`
+	LogLevel LogLevel     `json:"log_level"`
 }
 
 type ConfigServer struct {
