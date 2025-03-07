@@ -1,5 +1,8 @@
 #!/bin/bash
 
+if ! command -v gcc &> /dev/null; then
+    sudo apt update && sudo apt install gcc -y
+fi
 if ! command -v wget &> /dev/null; then
     sudo apt update && sudo apt install wget -y
 fi
@@ -16,4 +19,4 @@ fi
 if [ ! -f static/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
 fi
-go run .
+CGO_ENABLED=1 go run .
