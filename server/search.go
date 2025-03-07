@@ -122,7 +122,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		DocumentID uint64
 		Similarity float32
 	}
-	mostSimilar := make([]item, req.Count+req.Offset)
+	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
 	cacheStream := s.db.Cache.ReadInBatches(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
 	for matrixPointer := range cacheStream {
 		matrixFull := *matrixPointer
@@ -132,17 +132,15 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		}
 		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
 			barCache.Add(1)
-			if similarity < mostSimilar[0].Similarity {
-				continue
-			}
-			mostSimilar[0] = item{
+			mostSimilar = append(mostSimilar, item{
 				DocumentID: binary.LittleEndian.Uint64(matrixFull[idx][:8]),
 				Similarity: similarity,
-			}
-			slices.SortFunc(mostSimilar, func(a, b item) int {
-				return cmp.Compare(a.Similarity, b.Similarity)
 			})
 		}
+		slices.SortFunc(mostSimilar, func(a, b item) int {
+			return cmp.Compare(a.Similarity, b.Similarity)
+		})
+		mostSimilar = mostSimilar[:req.Count+req.Offset]
 	}
 	barCache.Finish()
 
@@ -170,17 +168,15 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		}
 		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
 			barDatabase.Add(1)
-			if similarity < mostSimilar[0].Similarity {
-				continue
-			}
-			mostSimilar[0] = item{
+			mostSimilar = append(mostSimilar, item{
 				DocumentID: batch[idx].ID,
 				Similarity: similarity,
-			}
-			slices.SortFunc(mostSimilar, func(a, b item) int {
-				return cmp.Compare(a.Similarity, b.Similarity)
 			})
 		}
+		slices.SortFunc(mostSimilar, func(a, b item) int {
+			return cmp.Compare(a.Similarity, b.Similarity)
+		})
+		mostSimilar = mostSimilar[:req.Count+req.Offset]
 		return nil
 	})
 	barDatabase.Finish()

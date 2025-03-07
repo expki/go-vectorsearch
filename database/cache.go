@@ -81,7 +81,7 @@ func (c *Cache) Count() uint64 {
 func (c *Cache) ReadInBatches(ctx context.Context, target []uint8, centroids int) (stream <-chan *[][]uint8) {
 	c.ivfLock.RLock()
 	defer c.ivfLock.RUnlock()
-	writeStream := make(chan *[][]uint8)
+	writeStream := make(chan *[][]uint8, config.STREAM_QUEUE_SIZE)
 	go func() {
 		defer close(writeStream)
 		var wg sync.WaitGroup
