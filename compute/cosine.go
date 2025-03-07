@@ -1,8 +1,6 @@
 package compute
 
 import (
-	"log"
-
 	_ "github.com/expki/go-vectorsearch/env"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
@@ -64,32 +62,32 @@ func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, 
 	// Step 2: Compute row-wise L2 norms of M1 and M2
 	M1Norms, err := rowWiseL2Norm(M1) // shape [N1]
 	if err != nil {
-		log.Fatalf("Cannot compute rowWiseL2Norm(M1): %v", err)
+		panic(err)
 	}
 	M2Norms, err := rowWiseL2Norm(M2) // shape [N2]
 	if err != nil {
-		log.Fatalf("Cannot compute rowWiseL2Norm(M2): %v", err)
+		panic(err)
 	}
 
 	// Broadcast M1Norms, M2Norms to get shape [N1, N2]
 	M1NormsCol, err := gorgonia.Reshape(M1Norms, tensor.Shape{matrix1.Shape[0], 1})
 	if err != nil {
-		log.Fatalf("Cannot reshape M1Norms: %v", err)
+		panic(err)
 	}
 	M2NormsRow, err := gorgonia.Reshape(M2Norms, tensor.Shape{1, matrix1.Shape[0]})
 	if err != nil {
-		log.Fatalf("Cannot reshape M2Norms: %v", err)
+		panic(err)
 	}
 
 	normsProduct, err := gorgonia.BroadcastHadamardProd(M1NormsCol, M2NormsRow, nil, []byte{1})
 	if err != nil {
-		log.Fatalf("Cannot broadcast norm product: %v", err)
+		panic(err)
 	}
 
 	// Step 3: Cosine similarity = dot / (||M1|| * ||M2||)
 	cosSim, err := gorgonia.HadamardDiv(dot, normsProduct)
 	if err != nil {
-		log.Fatalf("Cannot compute cosSim: %v", err)
+		panic(err)
 	}
 
 	// Build and run the VM
@@ -106,7 +104,7 @@ func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, 
 	// Step 4: Argmax across axis=0 => for each column in cosVal, find the row with max
 	argmaxTensor, err := tensor.Argmax(cosVal, 0)
 	if err != nil {
-		log.Fatalf("Cannot find argmax: %v", err)
+		panic(err)
 	}
 
 	// Convert to Go slice
