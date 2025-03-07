@@ -1,6 +1,8 @@
 package compute
 
 import (
+	"log"
+
 	_ "github.com/expki/go-vectorsearch/env"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
@@ -10,10 +12,10 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	g := gorgonia.NewGraph()
 
 	// Input vector
-	inputNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(vector.Dense))
+	inputNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(vector.Dense.Clone()))
 
 	// Batch matrix
-	batchNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix.Dense))
+	batchNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix.Dense.Clone()))
 
 	// Compute norms
 	inputSquared := gorgonia.Must(gorgonia.Square(inputNode))
@@ -36,12 +38,99 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 
 	// Execute the graph
 	machine := gorgonia.NewTapeMachine(g)
-	defer machine.Close()
-
-	if err := machine.RunAll(); err != nil {
+	err := machine.RunAll()
+	if err != nil {
 		panic(err)
 	}
+	machine.Close()
 
 	// Return data
 	return cosineSim.Value().Data().([]float32)
+}
+
+func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, bestMatches []int) {
+	g := gorgonia.NewGraph()
+
+	// Create tensor nodes to hold M1 and M2 (rank=2)
+	M1 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix1.Dense.Clone()))
+
+	M2 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix2.Dense.Clone()))
+
+	// Step 1: Dot Product => shape [N1, N2]
+	// M2^T: shape [dim, N2]
+	M2T := gorgonia.Must(gorgonia.Transpose(M2, 1, 0))
+	dot := gorgonia.Must(gorgonia.BatchedMatMul(M1, M2T))
+
+	// Step 2: Compute row-wise L2 norms of M1 and M2
+	M1Norms, err := rowWiseL2Norm(M1) // shape [N1]
+	if err != nil {
+		log.Fatalf("Cannot compute rowWiseL2Norm(M1): %v", err)
+	}
+	M2Norms, err := rowWiseL2Norm(M2) // shape [N2]
+	if err != nil {
+		log.Fatalf("Cannot compute rowWiseL2Norm(M2): %v", err)
+	}
+
+	// Broadcast M1Norms, M2Norms to get shape [N1, N2]
+	M1NormsCol, err := gorgonia.Reshape(M1Norms, tensor.Shape{matrix1.Shape[0], 1})
+	if err != nil {
+		log.Fatalf("Cannot reshape M1Norms: %v", err)
+	}
+	M2NormsRow, err := gorgonia.Reshape(M2Norms, tensor.Shape{1, matrix1.Shape[0]})
+	if err != nil {
+		log.Fatalf("Cannot reshape M2Norms: %v", err)
+	}
+
+	normsProduct, err := gorgonia.BroadcastHadamardProd(M1NormsCol, M2NormsRow, nil, []byte{1})
+	if err != nil {
+		log.Fatalf("Cannot broadcast norm product: %v", err)
+	}
+
+	// Step 3: Cosine similarity = dot / (||M1|| * ||M2||)
+	cosSim, err := gorgonia.HadamardDiv(dot, normsProduct)
+	if err != nil {
+		log.Fatalf("Cannot compute cosSim: %v", err)
+	}
+
+	// Build and run the VM
+	machine := gorgonia.NewTapeMachine(g)
+	err = machine.RunAll()
+	if err != nil {
+		panic(err)
+	}
+	machine.Close()
+
+	// Retrieve cosSim as a tensor
+	cosVal := cosSim.Value().(tensor.Tensor)
+
+	// Step 4: Argmax across axis=0 => for each column in cosVal, find the row with max
+	argmaxTensor, err := tensor.Argmax(cosVal, 0)
+	if err != nil {
+		log.Fatalf("Cannot find argmax: %v", err)
+	}
+
+	// Convert to Go slice
+	bestMatches = argmaxTensor.Data().([]int)
+
+	return cosSim.Value().Data().([]float32), bestMatches
+}
+
+// rowWiseL2Norm computes the row-wise L2-norms for a matrix node [N, D], returning a node of shape [N].
+func rowWiseL2Norm(mat *gorgonia.Node) (*gorgonia.Node, error) {
+	// square each element
+	squared, err := gorgonia.Square(mat)
+	if err != nil {
+		return nil, err
+	}
+	// sum across dim=1 (each row)
+	rowSums, err := gorgonia.Sum(squared, 1)
+	if err != nil {
+		return nil, err
+	}
+	// sqrt the sums -> L2 norms
+	norms, err := gorgonia.Sqrt(rowSums)
+	if err != nil {
+		return nil, err
+	}
+	return norms, nil
 }
