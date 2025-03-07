@@ -8,12 +8,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/expki/go-vectorsearch/ai"
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
+	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -103,10 +106,17 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 			Vector:   embedding,
 			Prefix:   req.Prefix,
 			Document: file,
+			Hash:     strconv.FormatUint(xxhash.Sum64(file), 36),
 		}
 		documents[idx] = embedding
 	}
-	result := s.db.Clauses(dbresolver.Write).WithContext(r.Context()).Create(&documents)
+	result := s.db.Clauses(
+		dbresolver.Write,
+		clause.OnConflict{
+			Columns:   []clause.Column{{Name: "hash"}},
+			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
+		},
+	).WithContext(r.Context()).Create(&documents)
 	if result.Error != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while saving", txid, time.Since(start).Milliseconds())

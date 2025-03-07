@@ -21,6 +21,7 @@ type Config struct {
 	TLS      ConfigTLS    `json:"tls"`
 	Database Database     `json:"database"`
 	Ollama   Ollama       `json:"ollama"`
+	Cache    string       `json:"cache"`
 }
 
 type ConfigServer struct {

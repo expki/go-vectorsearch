@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"slices"
@@ -30,6 +31,7 @@ type SearchRequest struct {
 	Count       uint   `json:"count"`
 	Offset      uint   `json:"offset,omitempty"`
 	NoDocuments bool   `json:"no_documents,omitempty"`
+	Centroids   int    `json:"centroids,omitempty"`
 }
 
 type SearchResponse struct {
@@ -79,6 +81,11 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	} else if req.Count > 20 {
 		req.Count = 20
 	}
+	if req.Centroids == 0 {
+		req.Centroids = 1
+	} else if req.Centroids < 0 {
+		req.Centroids = math.MaxInt
+	}
 
 	// Get embeddings
 	if req.Prefix != "" {
@@ -116,7 +123,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset)
-	cacheStream := s.db.Cache.ReadInBatches(r.Context())
+	cacheStream := s.db.Cache.ReadInBatches(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
 	for matrixPointer := range cacheStream {
 		matrixFull := *matrixPointer
 		matrix := make([][]uint8, len(matrixFull))

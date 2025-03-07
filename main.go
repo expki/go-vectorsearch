@@ -92,7 +92,7 @@ func main() {
 
 	// Database
 	logger.Sugar().Debug("Loading database...")
-	db, err := database.New(cfg.Database, len(test.Embeddings.Underlying()[0]))
+	db, err := database.New(cfg, len(test.Embeddings.Underlying()[0]))
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
@@ -231,6 +231,7 @@ func main() {
 	server2.Close()
 	stopApp()
 	db.Close()
+	db.Cache.Close()
 	logger.Sugar().Info("Server stopped")
 }
 

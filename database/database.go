@@ -3,6 +3,11 @@ package database
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -13,12 +18,12 @@ import (
 
 type Database struct {
 	*gorm.DB
-	Cache *Cache
+	Cache Cache
 }
 
-func New(cfg config.Database, vectorSize int) (db *Database, err error) {
+func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	// get dialectors from config
-	readwrite, readonly := cfg.GetDialectors()
+	readwrite, readonly := cfg.Database.GetDialectors()
 	if len(readwrite) == 0 {
 		return nil, errors.New("no writable database configured")
 	}
@@ -51,15 +56,58 @@ func New(cfg config.Database, vectorSize int) (db *Database, err error) {
 			return nil, err
 		}
 	}
+	db = &Database{DB: godb, Cache: Cache{path: cfg.Cache, vectorSize: vectorSize}}
 
-	// open cache
-	cache, err := NewCache(cfg.Cache, vectorSize)
-	if err != nil {
-		logger.Sugar().Errorf("failed to load cache: %v", err)
-		return nil, err
+	// create cache dir
+	if _, err := os.Stat(cfg.Cache); os.IsNotExist(err) {
+		err = os.Mkdir(cfg.Cache, 0755)
+		if err != nil {
+			logger.Sugar().Errorf("failed to create cache dir %q: %v", cfg.Cache, err)
+			return nil, err
+		}
 	}
 
-	return &Database{DB: godb, Cache: cache}, nil
+	// open cache
+	files, err := os.ReadDir(cfg.Cache)
+	if err != nil {
+		logger.Sugar().Errorf("failed to read cache dir %q: %v", cfg.Cache, err)
+		return nil, err
+	}
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil {
+			logger.Sugar().Errorf("failed to get file info for %q: %v", file.Name(), err)
+			continue
+		}
+		filePath := filepath.Join(cfg.Cache, file.Name())
+		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			logger.Sugar().Errorf("failed to open cache file %q: %v", filePath, err)
+			return nil, err
+		}
+		switch info.Name() {
+		case "database.cache":
+			db.Cache.file = file
+		default:
+			indexString, _ := strings.CutPrefix(info.Name(), "centroid_")
+			indexString, _ = strings.CutSuffix(indexString, ".cache")
+			index, err := strconv.Atoi(indexString)
+			if err != nil {
+				logger.Sugar().Errorf("failed to parse index from file name %q: %v", info.Name(), err)
+				continue
+			}
+			centroid := &centroid{Idx: index, file: file}
+			db.Cache.centroids = append(db.Cache.centroids, centroid)
+		}
+	}
+	sort.Slice(db.Cache.centroids, func(i, j int) bool {
+		return db.Cache.centroids[i].Idx < db.Cache.centroids[j].Idx // ascending order
+	})
+
+	return db, nil
 }
 
 func (d *Database) Close() error {

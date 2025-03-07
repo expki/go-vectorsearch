@@ -57,6 +57,9 @@ func (ivf *IVFFlat) NearestCentroids(query []uint8, topK int) (nearest []int, si
 // TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
 func (ivf *IVFFlat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
 	for batchPointer := range batchChan {
+		if batchPointer == nil {
+			break
+		}
 		batch := *batchPointer
 		if len(batch) == 0 {
 			break

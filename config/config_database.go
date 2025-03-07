@@ -13,7 +13,6 @@ type Database struct {
 	Sqlite           string                `json:"sqlite"`
 	Postgres         SingleOrSlice[string] `json:"postgres"`
 	PostgresReadOnly SingleOrSlice[string] `json:"postgres_readonly"`
-	Cache            string                `json:"cache"`
 }
 
 func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {

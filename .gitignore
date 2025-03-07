@@ -1,4 +1,4 @@
 build/
+cache/
 config.json
 vectors.db
-cache.db

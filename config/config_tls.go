@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/expki/go-vectorsearch/logger"
 )
 
 type ConfigTLS struct {
@@ -40,10 +42,9 @@ func (t *ConfigTLS) Configurate() error {
 		ticker := time.NewTicker(time.Hour)
 		for {
 			<-ticker.C
-			fmt.Println("reloading certificates")
 			err := t.reloadCertificates()
 			if err != nil {
-				fmt.Printf("could not reload certificates: %v\n", err)
+				logger.Sugar().Errorf("could not reload certificates: %v", err)
 			}
 		}
 	}()

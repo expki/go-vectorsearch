@@ -28,8 +28,8 @@ func CreateSample(path string) error {
 		},
 		Database: Database{
 			Sqlite: "./vectors.db",
-			Cache:  "./cache.db",
 		},
+		Cache: "./cache/",
 	}
 	raw, err := json.MarshalIndent(sample, "", "    ")
 	if err != nil {

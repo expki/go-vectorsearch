@@ -199,6 +199,9 @@ components:
         no_documents:
           type: boolean
           description: Flag to indicate whether to include documents in the response
+        centroids:
+          type: integer
+          description: Number of indicies to scan
       example: {"text": "Once upon a time", "count": 2}
     SearchResponse:
       type: object

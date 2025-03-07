@@ -13,10 +13,7 @@ sed -i "s/go[0-9]\.[0-9]\+/$(go env GOVERSION | sed -E 's/(go[0-9]+\.[0-9]+)\.[0
 if [ ! -f static/swagger-ui.css ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui.css -O static/swagger-ui.css
 fi
-if [ ! -f static/swagger-ui.css ]; then
-    wget https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css -O static/swagger-ui.css
-fi
 if [ ! -f static/swagger-ui-bundle.js ]; then
-    wget https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
+    wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
 fi
 CGO_ENABLED=1 go run .
