@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,11 +20,11 @@ import (
 )
 
 type ChatRequest struct {
-	Prefix      string           `json:"prefix,omitempty"`
-	History     []string         `json:"history,omitempty"`
-	Text        string           `json:"text"`
-	DocumentIDs []uint           `json:"document_ids,omitempty"`
-	Documents   []map[string]any `json:"documents,omitempty"`
+	Prefix      string   `json:"prefix,omitempty"`
+	History     []string `json:"history,omitempty"`
+	Text        string   `json:"text"`
+	DocumentIDs []uint   `json:"document_ids,omitempty"`
+	Documents   []any    `json:"documents,omitempty"`
 }
 
 func (s *server) Chat(w http.ResponseWriter, r *http.Request) {
@@ -85,15 +86,6 @@ func (s *server) Chat(w http.ResponseWriter, r *http.Request) {
 		req.Documents = append(req.Documents, doc.Document.Map())
 	}
 
-	// Create document context
-	var docContext strings.Builder
-	for _, doc := range req.Documents {
-		docContext.WriteRune('[')
-		docContext.WriteString(FlattenMap(doc))
-		docContext.WriteRune(']')
-		docContext.WriteRune('\n')
-	}
-
 	// Create history chat
 	messages := make([]ai.ChatMessage, len(req.History), len(req.History)+1)
 	for idx, content := range req.History {
@@ -109,13 +101,38 @@ func (s *server) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create chat
-	if req.Prefix != "" {
-		req.Text = fmt.Sprintf("%s: %s", req.Prefix, req.Text)
+	// Add document context
+	var query strings.Builder
+	if len(req.Documents) > 0 {
+		query.WriteString("I have ")
+		query.WriteString(strconv.Itoa(len(req.Documents)))
+		query.WriteString(" text document that I'd like to use as context for my question. Here's the relevant part")
+		if len(req.Documents) > 1 {
+			query.WriteRune('s')
+		}
+		query.WriteString(":\n\n")
+		for _, doc := range req.Documents {
+			query.WriteRune('"')
+			query.WriteString(Flatten(doc))
+			query.WriteRune('"')
+			query.WriteRune('\n')
+		}
+		query.WriteRune('\n')
 	}
+
+	// Construct question
+	query.WriteString("My question is: ")
+
+	// Add query
+	if req.Prefix != "" {
+		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
+	}
+	query.WriteString(req.Text)
+
+	// Construct message
 	messages = append(messages, ai.ChatMessage{
 		Role:    "user",
-		Content: fmt.Sprintf("%s\n%s", docContext.String(), req.Text),
+		Content: query.String(),
 	})
 
 	// Start chat

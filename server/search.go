@@ -89,7 +89,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 
 	// Get embeddings
 	if req.Prefix != "" {
-		req.Text = fmt.Sprintf("%s %s", req.Prefix, req.Text)
+		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
 	}
 	logger.Sugar().Debugf("%d request embeddings from ollama", txid)
 	embedRes, err := s.ai.Embed(r.Context(), ai.EmbedRequest{

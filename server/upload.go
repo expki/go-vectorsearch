@@ -21,9 +21,9 @@ import (
 )
 
 type UploadRequest struct {
-	Prefix      string           `json:"prefix,omitempty"`
-	Documents   []map[string]any `json:"documents"`
-	Information []string         `json:"-"`
+	Prefix      string   `json:"prefix,omitempty"`
+	Documents   []any    `json:"documents"`
+	Information []string `json:"-"`
 }
 
 type UploadResponse struct {
@@ -71,9 +71,9 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	logger.Sugar().Debugf("%d flattening files", txid)
 	req.Information = make([]string, len(req.Documents))
 	for idx, file := range req.Documents {
-		info := FlattenMap(file)
+		info := Flatten(file)
 		if req.Prefix != "" {
-			info = fmt.Sprintf("%s %s", req.Prefix, info)
+			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
 		}
 		req.Information[idx] = fmt.Sprintf("search_document: %s", info)
 	}
