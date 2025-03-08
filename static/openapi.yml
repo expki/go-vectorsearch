@@ -167,10 +167,13 @@ components:
           example: "Short Story"
         documents:
           type: array
-          description: The documents to embed
           items:
-            type: object
-          example: [{"story": "Once upon a time"}]
+            anyOf:
+            - type: string
+            - type: array
+            - type: object
+          description: The documents to embed
+          example: ["Once upon a time", ["In a galaxy far, far away"], {"story": "The Force Awakens"}]
     UploadResponse:
       type: object
       properties:
