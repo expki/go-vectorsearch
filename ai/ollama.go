@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"sync"
+	"sync/atomic"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -16,7 +16,6 @@ import (
 )
 
 type Ollama struct {
-	lock   sync.Mutex
 	uri    []*ollamaUrl
 	client *http.Client
 	token  string
@@ -50,13 +49,12 @@ func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
 }
 
 func (o *Ollama) Url() (uri url.URL, done func()) {
-	o.lock.Lock()
 	uriList := slices.Clone(o.uri)
 	rand.Shuffle(len(uriList), func(i, j int) {
 		uriList[i], uriList[j] = uriList[j], uriList[i]
 	})
 	var best *ollamaUrl
-	var bestConns uint64 = math.MaxUint64
+	var bestConns int64 = math.MaxInt64
 	for _, uri := range uriList {
 		conns := uri.Connections()
 		if conns < bestConns {
@@ -64,29 +62,23 @@ func (o *Ollama) Url() (uri url.URL, done func()) {
 			bestConns = conns
 		}
 	}
-	newconn := best.Get()
-	o.lock.Unlock()
-	return newconn, func() {
-		o.lock.Lock()
-		best.Done()
-		o.lock.Unlock()
-	}
+	return best.Get(), best.Done
 }
 
 type ollamaUrl struct {
 	uri         url.URL
-	connections uint64
+	connections int64
 }
 
-func (u *ollamaUrl) Connections() uint64 {
-	return u.connections
+func (u *ollamaUrl) Connections() int64 {
+	return atomic.LoadInt64(&u.connections)
 }
 
 func (u *ollamaUrl) Get() url.URL {
-	u.connections++
+	atomic.AddInt64(&u.connections, 1)
 	return u.uri
 }
 
 func (u *ollamaUrl) Done() {
-	u.connections--
+	atomic.AddInt64(&u.connections, -1)
 }
