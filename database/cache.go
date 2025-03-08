@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
 
@@ -311,9 +310,8 @@ func writeInBatches(file *os.File, stream <-chan *[][]uint8) {
 		file,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithEncoderCRC(false),
-		zstd.WithEncoderConcurrency(runtime.NumCPU()),
 		zstd.WithEncoderPadding(1),
-		zstd.WithNoEntropyCompression(true),
+		zstd.WithNoEntropyCompression(true), // entropy seems to increase final size 5% as well as being 10% slower, there is no benefit
 	)
 	if err != nil {
 		logger.Sugar().Fatalf("Failed to create zstd cache encoder: %v", err)
@@ -385,7 +383,6 @@ func readInBatches(ctx context.Context, file *os.File, vectorSize int, stream ch
 	// create decoder
 	decoder, err := zstd.NewReader(
 		file,
-		zstd.WithDecoderConcurrency(runtime.NumCPU()),
 		zstd.IgnoreChecksum(true),
 	)
 	if err != nil {
