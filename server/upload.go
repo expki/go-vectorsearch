@@ -21,16 +21,15 @@ import (
 )
 
 type UploadRequest struct {
-	Prefix      string   `json:"prefix,omitempty"`
-	Documents   []any    `json:"documents"`
-	Information []string `json:"-"`
+	Prefix    string `json:"prefix,omitempty"`
+	Documents []any  `json:"documents"`
 }
 
 type UploadResponse struct {
 	DocumentIDs []uint64 `json:"document_ids"`
 }
 
-func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
+func (s *server) UploadHttp(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d upload request started", txid)
@@ -70,21 +69,21 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	// Flatten each file and apply prefix
 	logger.Sugar().Debugf("%d flattening files", txid)
 	flattenedFiles := make([]string, len(req.Documents))
-	req.Information = make([]string, len(req.Documents))
+	information := make([]string, len(req.Documents))
 	for idx, file := range req.Documents {
 		info := Flatten(file)
 		flattenedFiles[idx] = info
 		if req.Prefix != "" {
 			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
 		}
-		req.Information[idx] = fmt.Sprintf("search_document: %s", info)
+		information[idx] = fmt.Sprintf("search_document: %s", info)
 	}
 
 	// Get embeddings
 	logger.Sugar().Debugf("%d request embeddings from ollama", txid)
 	embedRes, err := s.ai.Embed(r.Context(), ai.EmbedRequest{
 		Model: s.config.Ollama.Embed,
-		Input: req.Information,
+		Input: information,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -120,7 +119,7 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 		},
 	).WithContext(r.Context()).Create(&documents)
 	if result.Error != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while saving", txid, time.Since(start).Milliseconds())
 			w.WriteHeader(499)
 			io.WriteString(w, `{"error":"Client canceled request during record document"}`)
@@ -151,4 +150,65 @@ func (s *server) Upload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(resBytes)
 	logger.Sugar().Infof("%d upload request suceeded (%dms)", txid, time.Since(start).Milliseconds())
+}
+
+// Upload calculates the embedding for the uploaded document then saves the document and embedding in the database.
+func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadResponse, err error) {
+	// Flatten each file and apply prefix
+	flattenedFiles := make([]string, len(req.Documents))
+	information := make([]string, len(req.Documents))
+	for idx, file := range req.Documents {
+		info := Flatten(file)
+		flattenedFiles[idx] = info
+		if req.Prefix != "" {
+			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
+		}
+		information[idx] = fmt.Sprintf("search_document: %s", info)
+	}
+
+	// Get embeddings
+	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
+		Model: s.config.Ollama.Embed,
+		Input: information,
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return res, err
+		}
+		return res, errors.Join(err, fmt.Errorf("failed to embed documents"))
+	}
+
+	// Save embeddings and documents
+	documents := make([]database.Document, len(embedRes.Embeddings))
+	for idx, embedding := range embedRes.Embeddings.Underlying() {
+		file, _ := json.Marshal(req.Documents[idx])
+		embedding := database.Document{
+			Vector:   embedding,
+			Prefix:   req.Prefix,
+			Document: file,
+			Hash:     strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
+		}
+		documents[idx] = embedding
+	}
+	result := s.db.Clauses(
+		dbresolver.Write,
+		clause.OnConflict{
+			Columns:   []clause.Column{{Name: "hash"}},
+			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
+		},
+	).WithContext(ctx).Create(&documents)
+	if result.Error != nil {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			return res, result.Error
+		}
+		return res, errors.Join(result.Error, fmt.Errorf("failed to save document"))
+	}
+
+	// Create response
+	res.DocumentIDs = make([]uint64, len(documents))
+	for idx, embedding := range documents {
+		res.DocumentIDs[idx] = embedding.ID
+	}
+
+	return res, nil
 }

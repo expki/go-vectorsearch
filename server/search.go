@@ -40,7 +40,7 @@ type SearchResponse struct {
 	Similarities []float32        `json:"similarities"`
 }
 
-func (s *server) Search(w http.ResponseWriter, r *http.Request) {
+func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d search request started", txid)
@@ -205,7 +205,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	result = s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Find(&documents, ids)
 	if result.Error != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			logger.Sugar().Debugf("%d request canceled after %dms while fetching documents", txid, time.Since(start).Milliseconds())
 			w.WriteHeader(499)
 			io.WriteString(w, `{"error":"Client canceled request during fetching documents"}`)
@@ -237,7 +237,7 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 		res.Documents = nil
 	}
 	resBytes, err := json.Marshal(res)
-	if result.Error != nil {
+	if err != nil {
 		logger.Sugar().Errorf("%d database response marshal failed: %v", txid, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, `{"error":"Response failed"}`)
@@ -248,4 +248,140 @@ func (s *server) Search(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(resBytes)
 	logger.Sugar().Infof("%d search request suceeded (%dms)", txid, time.Since(start).Milliseconds())
+}
+
+// Search for a previously uploaded embedding vector in the database and return similar documents.
+func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchResponse, err error) {
+	if req.Count == 0 {
+		req.Count = 1
+	} else if req.Count > 20 {
+		req.Count = 20
+	}
+	if req.Centroids == 0 {
+		req.Centroids = 1
+	} else if req.Centroids < 0 {
+		req.Centroids = math.MaxInt
+	}
+
+	// Get embeddings
+	if req.Prefix != "" {
+		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
+	}
+	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
+		Model: s.config.Ollama.Embed,
+		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return res, err
+		}
+		return res, errors.Join(err, fmt.Errorf("failed to embed search query"))
+	}
+	if len(embedRes.Embeddings) < 1 {
+		return res, fmt.Errorf("embedding returned empty response")
+	}
+	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
+
+	// Scan embeddings from cache
+	barCache := progressbar.Default(int64(s.db.Cache.Count()), "Searching cache...")
+	type item struct {
+		DocumentID uint64
+		Similarity float32
+	}
+	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
+	cacheStream := s.db.Cache.ReadInBatches(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
+	for matrixPointer := range cacheStream {
+		matrixFull := *matrixPointer
+		matrix := make([][]uint8, len(matrixFull))
+		for idx, row := range matrixFull {
+			matrix[idx] = row[8:]
+		}
+		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
+			barCache.Add(1)
+			mostSimilar = append(mostSimilar, item{
+				DocumentID: binary.LittleEndian.Uint64(matrixFull[idx][:8]),
+				Similarity: similarity,
+			})
+		}
+		slices.SortFunc(mostSimilar, func(a, b item) int {
+			return cmp.Compare(a.Similarity, b.Similarity)
+		})
+		mostSimilar = mostSimilar[:req.Count+req.Offset]
+	}
+	barCache.Finish()
+
+	// Scan embeddings from database
+	var total int64
+	result := s.db.Clauses(dbresolver.Read).WithContext(ctx).Model(&database.Document{}).Where("updated_at > ?", s.db.Cache.LastUpdated()).Count(&total)
+	if result.Error != nil {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			return res, result.Error
+		}
+		return res, errors.Join(result.Error, fmt.Errorf("counting total records failed"))
+	}
+	barDatabase := progressbar.Default(total, "Searching database...")
+	var batch []database.Document
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("vector", "id").Where("updated_at > ?", s.db.Cache.LastUpdated()).FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+		matrix := make([][]uint8, len(batch))
+		for idx, result := range batch {
+			matrix[idx] = result.Vector.Underlying()
+		}
+		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
+			barDatabase.Add(1)
+			mostSimilar = append(mostSimilar, item{
+				DocumentID: batch[idx].ID,
+				Similarity: similarity,
+			})
+		}
+		slices.SortFunc(mostSimilar, func(a, b item) int {
+			return cmp.Compare(a.Similarity, b.Similarity)
+		})
+		mostSimilar = mostSimilar[:req.Count+req.Offset]
+		return nil
+	})
+	barDatabase.Finish()
+	if result.Error != nil && err != gorm.ErrRecordNotFound {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			return res, result.Error
+		}
+		return res, errors.Join(result.Error, fmt.Errorf("database vector retrieval failed"))
+	}
+	slices.Reverse(mostSimilar)
+	mostSimilar = mostSimilar[req.Offset : req.Count+req.Offset]
+
+	// Fetch most similar documents
+	var documents []database.Document
+	ids := make([]uint64, 0, len(mostSimilar))
+	for _, item := range mostSimilar {
+		if item.DocumentID != 0 {
+			ids = append(ids, item.DocumentID)
+		}
+	}
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Find(&documents, ids)
+	if result.Error != nil {
+		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			return res, result.Error
+		}
+		return res, errors.Join(result.Error, fmt.Errorf("database document retrieval failed"))
+	}
+
+	// Create response
+	res.Documents = make([]map[string]any, req.Count)
+	res.DocumentIDs = make([]uint64, req.Count)
+	res.Similarities = make([]float32, req.Count)
+	for idx, item := range mostSimilar {
+		for _, doc := range documents {
+			if doc.ID == item.DocumentID {
+				res.Documents[idx] = doc.Document.Map()
+				break
+			}
+		}
+		res.DocumentIDs[idx] = item.DocumentID
+		res.Similarities[idx] = item.Similarity
+	}
+	if req.NoDocuments {
+		res.Documents = nil
+	}
+
+	return res, nil
 }
