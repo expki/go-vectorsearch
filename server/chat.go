@@ -83,7 +83,7 @@ func (s *server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, doc := range documents {
-		req.Documents = append(req.Documents, doc.Document.Map())
+		req.Documents = append(req.Documents, doc.Document.JSON())
 	}
 
 	// Create history chat
@@ -198,12 +198,12 @@ func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan by
 					errChan <- result.Error
 					return
 				}
-				errChan <- errors.Join(result.Error, fmt.Errorf(`Retrieving documents failed`))
+				errChan <- errors.Join(result.Error, fmt.Errorf(`retrieving documents failed`))
 				return
 			}
 		}
 		for _, doc := range documents {
-			req.Documents = append(req.Documents, doc.Document.Map())
+			req.Documents = append(req.Documents, doc.Document.JSON())
 		}
 
 		// Create history chat

@@ -10,9 +10,9 @@ import (
 
 type DocumentField json.RawMessage
 
-func (d DocumentField) Map() (object map[string]any) {
-	json.Unmarshal(d, &object)
-	return object
+func (d DocumentField) JSON() (value any) {
+	json.Unmarshal(d, &value)
+	return value
 }
 
 // Scan scan value into DocumentField, implements sql.Scanner interface

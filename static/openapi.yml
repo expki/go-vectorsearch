@@ -214,20 +214,21 @@ components:
           description: A list of similar documents, if included in the request.
           items:
             type: object
-          example: [{"story": "Once upon a time"}, {"another_story": "In another world"}]
-        document_ids:
-          type: array
-          description: A list of IDs for the similar documents
-          items:
-           type: integer
-          example: [1, 2]
-        similarities:
-          type: array
-          description: A list of similarity scores corresponding to each document
-          items:
-            type: number
-            format: float
-          example: [0.95, 0.87]
+            properties:
+              document_id:
+                type: integer
+                description: The ID of the similar document
+              similarity:
+                type: number
+                format: float
+                description: The similarity score of the document
+              document:
+                anyOf:
+                - type: string
+                - type: array
+                - type: object
+                description: The actual content of the similar document, if included in the request.
+          example: [{"document_id": 1, "similarity": 0.95, "document": "Once upon a time"}]
     ChatRequest:
       type: object
       required: ["text"]

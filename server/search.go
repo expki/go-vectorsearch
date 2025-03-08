@@ -35,9 +35,13 @@ type SearchRequest struct {
 }
 
 type SearchResponse struct {
-	Documents    []map[string]any `json:"documents,omitempty"`
-	DocumentIDs  []uint64         `json:"document_ids"`
-	Similarities []float32        `json:"similarities"`
+	Documents []DocumentSearchInfo `json:"documents"`
+}
+
+type DocumentSearchInfo struct {
+	DocumentID uint64  `json:"document_id"`
+	Similarity float32 `json:"similarity"`
+	Document   any     `json:"document,omitempty"`
 }
 
 func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
@@ -219,22 +223,19 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 
 	// Create response
 	res := SearchResponse{
-		Documents:    make([]map[string]any, req.Count),
-		DocumentIDs:  make([]uint64, req.Count),
-		Similarities: make([]float32, req.Count),
+		Documents: make([]DocumentSearchInfo, req.Count),
 	}
 	for idx, item := range mostSimilar {
-		for _, doc := range documents {
-			if doc.ID == item.DocumentID {
-				res.Documents[idx] = doc.Document.Map()
-				break
+		res.Documents[idx].DocumentID = item.DocumentID
+		res.Documents[idx].Similarity = item.Similarity
+		if !req.NoDocuments {
+			for _, doc := range documents {
+				if doc.ID == item.DocumentID {
+					res.Documents[idx].Document = doc.Document.JSON()
+					break
+				}
 			}
 		}
-		res.DocumentIDs[idx] = item.DocumentID
-		res.Similarities[idx] = item.Similarity
-	}
-	if req.NoDocuments {
-		res.Documents = nil
 	}
 	resBytes, err := json.Marshal(res)
 	if err != nil {
@@ -366,21 +367,18 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Create response
-	res.Documents = make([]map[string]any, req.Count)
-	res.DocumentIDs = make([]uint64, req.Count)
-	res.Similarities = make([]float32, req.Count)
+	res.Documents = make([]DocumentSearchInfo, req.Count)
 	for idx, item := range mostSimilar {
-		for _, doc := range documents {
-			if doc.ID == item.DocumentID {
-				res.Documents[idx] = doc.Document.Map()
-				break
+		res.Documents[idx].DocumentID = item.DocumentID
+		res.Documents[idx].Similarity = item.Similarity
+		if !req.NoDocuments {
+			for _, doc := range documents {
+				if doc.ID == item.DocumentID {
+					res.Documents[idx].Document = doc.Document.JSON()
+					break
+				}
 			}
 		}
-		res.DocumentIDs[idx] = item.DocumentID
-		res.Similarities[idx] = item.Similarity
-	}
-	if req.NoDocuments {
-		res.Documents = nil
 	}
 
 	return res, nil
