@@ -175,7 +175,7 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return res, err
 		}
-		return res, errors.Join(err, fmt.Errorf("failed to embed documents"))
+		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
 
 	// Save embeddings and documents
@@ -201,7 +201,7 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			return res, result.Error
 		}
-		return res, errors.Join(result.Error, fmt.Errorf("failed to save document"))
+		return res, errors.Join(errors.New("failed to save document"), result.Error)
 	}
 
 	// Create response

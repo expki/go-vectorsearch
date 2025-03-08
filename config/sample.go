@@ -2,7 +2,7 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 
 	_ "github.com/expki/go-vectorsearch/env"
@@ -34,11 +34,11 @@ func CreateSample(path string) error {
 	}
 	raw, err := json.MarshalIndent(sample, "", "    ")
 	if err != nil {
-		return fmt.Errorf("could not marshal sample config: %v", err)
+		return errors.Join(errors.New("could not marshal sample config"), err)
 	}
 	err = os.WriteFile(path, raw, 0600)
 	if err != nil {
-		return fmt.Errorf("could not write sample config file: %v", err)
+		return errors.Join(errors.New("could not write sample config file"), err)
 	}
 	return nil
 }

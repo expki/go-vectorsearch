@@ -61,11 +61,11 @@ func (t *ConfigTLSPath) loadCertificate() error {
 	// Load Filesystem
 	cert, err := tls.LoadX509KeyPair(t.CertPath, t.KeyPath)
 	if err != nil {
-		return fmt.Errorf("could not load certificate & key: %v", err)
+		return errors.Join(fmt.Errorf("could not load certificate & key"), err)
 	}
 	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		return fmt.Errorf("could not parse certificate: %v", err)
+		return errors.Join(errors.New("could not parse certificate"), err)
 	}
 	t.mutex.Lock()
 	t.certificate = cert

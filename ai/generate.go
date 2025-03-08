@@ -47,7 +47,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	request.Stream = false
 	body, err := json.Marshal(request)
 	if err != nil {
-		return response, fmt.Errorf("failed to marshal request body: %v", err)
+		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Create request
 	uri, uriDone := ai.Url()
@@ -55,7 +55,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	uri.Path = "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
-		return response, fmt.Errorf("failed to create request: %v", err)
+		return response, errors.Join(errors.New("failed to create request"), err)
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
@@ -65,7 +65,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	// Send request
 	resp, err := ai.client.Do(req)
 	if err != nil {
-		return response, fmt.Errorf("failed to send request: %v", err)
+		return response, errors.Join(errors.New("failed to send request"), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -77,11 +77,11 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return response, err
 		}
-		return response, fmt.Errorf("failed to read response body: %v", err)
+		return response, errors.Join(errors.New("failed to read response body"), err)
 	}
 	err = json.Unmarshal(buf, &response)
 	if err != nil {
-		return response, fmt.Errorf("failed to unmarshal response: %v", err)
+		return response, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
 	return response, nil
 }
@@ -103,7 +103,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 
 		body, err := json.Marshal(request)
 		if err != nil {
-			writer.CloseWithError(fmt.Errorf("failed to marshal request body: %v", err))
+			writer.CloseWithError(errors.Join(errors.New("failed to marshal request body"), err))
 		}
 		// Create request
 		uri, uriDone := ai.Url()
@@ -111,7 +111,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 		uri.Path = "/api/generate"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 		if err != nil {
-			writer.CloseWithError(fmt.Errorf("failed to create request: %v", err))
+			writer.CloseWithError(errors.Join(errors.New("failed to create request"), err))
 			return
 		}
 		// Set headers
@@ -122,7 +122,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 		// Send request
 		resp, err := ai.client.Do(req)
 		if err != nil {
-			writer.CloseWithError(fmt.Errorf("failed to send request: %v", err))
+			writer.CloseWithError(errors.Join(errors.New("failed to send request"), err))
 			return
 		}
 		defer resp.Body.Close()

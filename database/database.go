@@ -2,7 +2,6 @@ package database
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,7 +35,7 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	if err != nil {
 		logger.Sugar().Debugf("config: %+v", cfg)
 		logger.Sugar().Debugf("dsn: %+v", readwrite[0])
-		return nil, fmt.Errorf("failed to open database connection: %v", err)
+		return nil, errors.Join(errors.New("failed to open database connection"), err)
 	}
 	godb.Clauses(dbresolver.Write).AutoMigrate(
 		&Document{},

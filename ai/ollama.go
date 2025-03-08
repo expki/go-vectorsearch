@@ -28,7 +28,7 @@ func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
 	for _, cfgUrl := range cfg.Url {
 		uriPonter, err := url.Parse(cfgUrl)
 		if err != nil {
-			return nil, fmt.Errorf("unable to parse ollama url '%s': %v", cfgUrl, err)
+			return nil, errors.Join(fmt.Errorf("unable to parse ollama url %q", cfgUrl), err)
 		} else if uriPonter == nil {
 			return nil, errors.New("parsed ollama url is nil")
 		}

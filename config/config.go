@@ -2,7 +2,7 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 
 	_ "github.com/expki/go-vectorsearch/env"
 )
@@ -11,7 +11,7 @@ import (
 func ParseConfig(raw []byte) (config Config, err error) {
 	err = json.Unmarshal(raw, &config)
 	if err != nil {
-		return config, fmt.Errorf("unmarshal config: %v", err)
+		return config, errors.Join(errors.New("unmarshal config"), err)
 	}
 	return config, nil
 }

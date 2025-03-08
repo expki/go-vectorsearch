@@ -198,7 +198,7 @@ func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan by
 					errChan <- result.Error
 					return
 				}
-				errChan <- errors.Join(result.Error, fmt.Errorf(`retrieving documents failed`))
+				errChan <- errors.Join(fmt.Errorf(`retrieving documents failed`), result.Error)
 				return
 			}
 		}
@@ -274,7 +274,7 @@ func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan by
 					errChan <- err
 					return
 				}
-				errChan <- errors.Join(err, fmt.Errorf("chat failed"))
+				errChan <- errors.Join(errors.New("chat failed"), err)
 				return
 			}
 

@@ -9,7 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"fmt"
+	"errors"
 	"math/big"
 	mrand "math/rand"
 	"net"
@@ -36,7 +36,7 @@ func (t *ConfigTLS) Configurate() error {
 	}
 	err := t.reloadCertificates()
 	if err != nil {
-		return fmt.Errorf("could not load certificates: %v", err)
+		return errors.Join(errors.New("could not load certificates"), err)
 	}
 	go func() {
 		ticker := time.NewTicker(time.Hour)
@@ -50,7 +50,7 @@ func (t *ConfigTLS) Configurate() error {
 	}()
 	err = t.generateMissingCertificates()
 	if err != nil {
-		return fmt.Errorf("could not generate missing certificates: %v", err)
+		return errors.Join(errors.New("could not generate missing certificates"), err)
 	}
 	return nil
 }
@@ -160,8 +160,15 @@ func (t *ConfigTLS) generateMissingCertificates() error {
 			t.mutex.Unlock()
 		}
 	}
-	if ecdsaErr != nil || rsaErr != nil {
-		return fmt.Errorf("could not generate missing certificates: (ecdsa: %v), (rsa: %v)", ecdsaErr, rsaErr)
+	var listErr []error
+	if ecdsaErr != nil {
+		listErr = append(listErr, errors.Join(errors.New("ecdsa"), ecdsaErr))
+	}
+	if rsaErr != nil {
+		listErr = append(listErr, errors.Join(errors.New("rsa"), rsaErr))
+	}
+	if len(listErr) > 0 {
+		return errors.Join(errors.New("failed to generate certificates"), errors.Join(listErr...))
 	}
 	return nil
 }
@@ -171,14 +178,14 @@ func generateCertificateECDSA(dns []string, ip []net.IP) (certificate tls.Certif
 	// gernerate private key
 	key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
-		return certificate, fmt.Errorf("could not generate ecdsa key: %v", err)
+		return certificate, errors.Join(errors.New("could not generate ecdsa key"), err)
 	}
 	certificate.PrivateKey = key
 
 	// generate SKI
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
-		return certificate, fmt.Errorf("could not marshal public key: %v", err)
+		return certificate, errors.Join(errors.New("could not marshal public key"), err)
 	}
 	ski := sha1.Sum(pubKeyBytes)
 
@@ -202,14 +209,14 @@ func generateCertificateECDSA(dns []string, ip []net.IP) (certificate tls.Certif
 	}
 	leafDer, err := x509.CreateCertificate(rand.Reader, leaf, leaf, key.Public(), key)
 	if err != nil {
-		return certificate, fmt.Errorf("could not create ecdsa certificate: %v", err)
+		return certificate, errors.Join(errors.New("could not create ecdsa certificate"), err)
 	}
 	certificate.Certificate = [][]byte{leafDer}
 
 	// parse certificate
 	certificate.Leaf, err = x509.ParseCertificate(leafDer)
 	if err != nil {
-		return certificate, fmt.Errorf("could not parse ecdsa certificate: %v", err)
+		return certificate, errors.Join(errors.New("could not parse ecdsa certificate"), err)
 	}
 
 	return certificate, nil
@@ -220,14 +227,14 @@ func generateCertificateRSA(dns []string, ip []net.IP) (certificate tls.Certific
 	// gernerate private key
 	key, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return certificate, fmt.Errorf("could not generate rsa key: %v", err)
+		return certificate, errors.Join(errors.New("could not generate rsa key"), err)
 	}
 	certificate.PrivateKey = key
 
 	// generate SKI
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
-		return certificate, fmt.Errorf("could not marshal public key: %v", err)
+		return certificate, errors.Join(errors.New("could not marshal public key"), err)
 	}
 	ski := sha1.Sum(pubKeyBytes)
 
@@ -251,14 +258,14 @@ func generateCertificateRSA(dns []string, ip []net.IP) (certificate tls.Certific
 	}
 	leafDer, err := x509.CreateCertificate(rand.Reader, leaf, leaf, key.Public(), key)
 	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("could not create rsa certificate: %v", err)
+		return tls.Certificate{}, errors.Join(errors.New("could not create rsa certificate"), err)
 	}
 	certificate.Certificate = [][]byte{leafDer}
 
 	// parse certificate
 	certificate.Leaf, err = x509.ParseCertificate(leafDer)
 	if err != nil {
-		return certificate, fmt.Errorf("could not parse rsa certificate: %v", err)
+		return certificate, errors.Join(errors.New("could not parse rsa certificate"), err)
 	}
 
 	return certificate, nil

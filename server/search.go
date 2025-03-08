@@ -276,10 +276,10 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return res, err
 		}
-		return res, errors.Join(err, fmt.Errorf("failed to embed search query"))
+		return res, errors.Join(errors.New("failed to embed search query"), err)
 	}
 	if len(embedRes.Embeddings) < 1 {
-		return res, fmt.Errorf("embedding returned empty response")
+		return res, errors.New("embedding returned empty response")
 	}
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
@@ -318,7 +318,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			return res, result.Error
 		}
-		return res, errors.Join(result.Error, fmt.Errorf("counting total records failed"))
+		return res, errors.Join(errors.New("counting total records failed"), result.Error)
 	}
 	barDatabase := progressbar.Default(total, "Searching database...")
 	var batch []database.Document
@@ -345,7 +345,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			return res, result.Error
 		}
-		return res, errors.Join(result.Error, fmt.Errorf("database vector retrieval failed"))
+		return res, errors.Join(errors.New("database vector retrieval failed"), result.Error)
 	}
 	slices.Reverse(mostSimilar)
 	mostSimilar = mostSimilar[req.Offset : req.Count+req.Offset]
@@ -363,7 +363,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			return res, result.Error
 		}
-		return res, errors.Join(result.Error, fmt.Errorf("database document retrieval failed"))
+		return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
 	}
 
 	// Create response

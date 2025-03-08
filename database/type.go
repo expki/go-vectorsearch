@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql/driver"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -19,11 +20,11 @@ func (d DocumentField) JSON() (value any) {
 func (d *DocumentField) Scan(value any) error {
 	bytes, ok := value.([]byte)
 	if !ok {
-		return fmt.Errorf("failed to unmarshal DocumentField value: %+v", value)
+		return fmt.Errorf("failed to unmarshal DocumentField value: %v", value)
 	}
 	original, err := decompress(bytes)
 	if err != nil {
-		return fmt.Errorf("failed to decompress DocumentField value: %+v", subSlice(bytes, 10))
+		return fmt.Errorf("failed to decompress DocumentField value: %s", hex.EncodeToString(subSlice(bytes, 20)))
 	}
 	result := json.RawMessage{}
 	err = json.Unmarshal(original, &result)
@@ -56,11 +57,11 @@ type VectorField []uint8
 func (v *VectorField) Scan(value any) error {
 	bytes, ok := value.([]byte)
 	if !ok {
-		return fmt.Errorf("failed to unmarshal Vector value: %+v", value)
+		return fmt.Errorf("failed to unmarshal Vector value: %v", value)
 	}
 	original, err := decompress(bytes)
 	if err != nil {
-		return fmt.Errorf("failed to decompress Vector value: %+v", subSlice(bytes, 10))
+		return fmt.Errorf("failed to decompress Vector value: %s", hex.EncodeToString(subSlice(bytes, 20)))
 	}
 	*v = VectorField(original)
 	return nil
