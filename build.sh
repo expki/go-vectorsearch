@@ -16,6 +16,10 @@ fi
 if [ ! -f static/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/swagger-ui-bundle.js
 fi
+if command -v tsc &> /dev/null; then
+    printf "Compiling Typescript...\n"
+    tsc static/script.ts
+fi
 mkdir -p build
 printf "Building AVX2...\n"
 GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch .
