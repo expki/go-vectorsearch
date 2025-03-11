@@ -28,7 +28,7 @@ func NoAI() ai.AI {
 	raw := make([]byte, 8)
 	_, err := crand.Read(raw)
 	if err == nil {
-		raw[0] &= 0xFE // Set the first bit of the first byte to 0.
+		raw[7] &= 0x7F // Ensure it is a positive number.
 		seed = int64(binary.LittleEndian.Uint64(raw))
 	} else {
 		seed = time.Now().Unix()
