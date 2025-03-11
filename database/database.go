@@ -2,16 +2,19 @@ package database
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
 	"gorm.io/gorm"
+	glog "gorm.io/gorm/logger"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -21,6 +24,14 @@ type Database struct {
 }
 
 func New(cfg config.Config, vectorSize int) (db *Database, err error) {
+	// create logger
+	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
+		SlowThreshold:             30 * time.Second,
+		LogLevel:                  cfg.LogLevel.GORM(),
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+	})
+
 	// get dialectors from config
 	readwrite, readonly := cfg.Database.GetDialectors()
 	if len(readwrite) == 0 {
@@ -31,6 +42,7 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	godb, err := gorm.Open(readwrite[0], &gorm.Config{
 		SkipDefaultTransaction: true,
 		PrepareStmt:            true,
+		Logger:                 glogger,
 	})
 	if err != nil {
 		logger.Sugar().Debugf("config: %+v", cfg)

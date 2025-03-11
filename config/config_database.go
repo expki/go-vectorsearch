@@ -2,17 +2,20 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 
 	_ "github.com/expki/go-vectorsearch/env"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Database struct {
 	Sqlite           string                `json:"sqlite"`
 	Postgres         SingleOrSlice[string] `json:"postgres"`
 	PostgresReadOnly SingleOrSlice[string] `json:"postgres_readonly"`
+	LogLevel         LogLevel              `json:"log_level"` // 0: Silent, 1: Error, 2: Warn, 3: Info, 4: Debug
 }
 
 func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
@@ -31,6 +34,25 @@ func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
 		}
 	}
 	return
+}
+
+func (c LogLevel) GORM() (level logger.LogLevel) {
+	switch strings.ToLower(strings.TrimSpace(c.String())) {
+	case LogLevelDebug.String(), "trace":
+		return logger.Silent
+	case LogLevelInfo.String(), "information", "notice":
+		return logger.Info
+	case LogLevelWarn.String(), "warning", "alert":
+		return logger.Warn
+	case LogLevelError.String(), "silent":
+		return logger.Error
+	case LogLevelFatal.String(), "critical", "emergency":
+		return logger.Error
+	case LogLevelPanic.String():
+		return logger.Error
+	default:
+		return logger.Error
+	}
 }
 
 // SingleOrSlice allows for a configuration field to be either a single value or a slice of values.

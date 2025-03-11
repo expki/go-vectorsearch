@@ -29,7 +29,7 @@ func (l LogLevel) Zap() zap.AtomicLevel {
 		return zap.NewAtomicLevelAt(zap.InfoLevel)
 	case LogLevelWarn.String(), "warning", "alert":
 		return zap.NewAtomicLevelAt(zap.WarnLevel)
-	case LogLevelError.String():
+	case LogLevelError.String(), "silent":
 		return zap.NewAtomicLevelAt(zap.ErrorLevel)
 	case LogLevelFatal.String(), "critical", "emergency":
 		return zap.NewAtomicLevelAt(zap.FatalLevel)
