@@ -32,7 +32,7 @@ type GenerateRequest struct {
 }
 
 type GenerateResponse struct {
-	generateStream
+	GenerateStream
 	Context            []int `json:"context"`
 	TotalDuration      int64 `json:"total_duration"`
 	LoadDuration       int64 `json:"load_duration"`
@@ -86,7 +86,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	return response, nil
 }
 
-type generateStream struct {
+type GenerateStream struct {
 	Model     string    `json:"model"`
 	CreatedAt time.Time `json:"created_at"`
 	Response  string    `json:"response"`
@@ -141,7 +141,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 				writer.CloseWithError(err)
 				return
 			}
-			var res generateStream
+			var res GenerateStream
 			err = json.Unmarshal([]byte(line), &res)
 			if err != nil {
 				writer.CloseWithError(err)

@@ -21,8 +21,8 @@ type Ollama struct {
 	token  string
 }
 
-func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
-	ai = new(Ollama)
+func NewOllama(cfg config.Ollama) (ai AI, err error) {
+	ollama := new(Ollama)
 
 	// Parse Ollama URI
 	for _, cfgUrl := range cfg.Url {
@@ -32,20 +32,20 @@ func NewOllama(cfg config.Ollama) (ai *Ollama, err error) {
 		} else if uriPonter == nil {
 			return nil, errors.New("parsed ollama url is nil")
 		}
-		ai.uri = append(ai.uri, &ollamaUrl{
+		ollama.uri = append(ollama.uri, &ollamaUrl{
 			uri: *uriPonter,
 		})
 	}
-	ai.token = cfg.Token
+	ollama.token = cfg.Token
 
 	// Create http client
 	transport := &http.Transport{}
 	http2.ConfigureTransport(transport)
-	ai.client = &http.Client{
+	ollama.client = &http.Client{
 		Transport: transport,
 	}
 
-	return ai, nil
+	return ollama, nil
 }
 
 func (o *Ollama) Url() (uri url.URL, done func()) {
