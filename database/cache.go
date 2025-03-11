@@ -253,17 +253,22 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 	bar := progressbar.Default(total, "Indexed Database Cache")
 	var batch []Document
 	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+		// send batch for training index
 		matrixTrain := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrixTrain[idx] = result.Vector
 		}
 		batchChan <- &matrixTrain
+
+		// prefix document id to vector for cache
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = make([]byte, 8, 8+len(result.Vector))
 			binary.LittleEndian.PutUint64(matrix[idx], result.ID)
 			matrix[idx] = append(matrix[idx], result.Vector...)
 		}
+
+		// assign vectors to centroids based on training results
 		matrixMap := make(map[int][][]uint8, len(batch))
 		for idx := range centroids {
 			matrixMap[idx] = make([][]uint8, 0, len(batch))
@@ -271,10 +276,13 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		for vectorIdx, centroidIdx := range <-assignmentChan {
 			matrixMap[centroidIdx] = append(matrixMap[centroidIdx], matrix[vectorIdx])
 		}
+
+		// write vectors to cache files
 		for idx := range centroids {
 			copy := matrixMap[idx]
 			streamList[idx] <- &copy
 		}
+
 		bar.Add(len(matrix))
 		return nil
 	})
