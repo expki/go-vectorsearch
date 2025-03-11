@@ -202,7 +202,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 
 	centroids := int(total / config.CACHE_TARGET_INDEX_SIZE)
 
-	// Fetch initial centroids
+	// Fetch initial random centroids
 	var initialCentroids []Document
 	result := db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").Order("RANDOM()").Limit(centroids).Find(&initialCentroids)
 	if result.Error != nil {
@@ -249,10 +249,10 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 	assignmentChan := make(chan []int, 1)
 	go db.Cache.ivf.TrainIVFStreaming(batchChan, assignmentChan)
 
-	// Fetch in random order to ensure randomness in IVFFlat index training.
+	// Retrieve and train IVFFlat index
 	bar := progressbar.Default(total, "Indexed Database Cache")
 	var batch []Document
-	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").Order("RANDOM()").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		matrixTrain := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrixTrain[idx] = result.Vector
