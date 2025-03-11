@@ -130,7 +130,7 @@ func (ivf *IVFFlat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 		newCentroids, counts := ivf.computeBatchAverages(matrix, batchAssignments)
 
 		// Update centroids with mini-batch centroids
-		ivf.updateCentroidsMiniBatch(newCentroids, counts, ivf.learningRate)
+		ivf.updateCentroidsMiniBatch(batchSize, newCentroids, counts)
 
 		// Send the assignments to the main thread
 		assignmentChan <- batchAssignments
@@ -148,6 +148,7 @@ func (ivf *IVFFlat) computeBatchAverages(batch [][]float32, assignments []int) (
 	}
 	counts := make([]int, ivf.numberCentroids)
 
+	// Sum up all vectors assigned to each cluster.
 	for i, vec := range batch {
 		c := assignments[i]
 		counts[c]++
@@ -156,25 +157,31 @@ func (ivf *IVFFlat) computeBatchAverages(batch [][]float32, assignments []int) (
 		}
 	}
 
+	// Devide by the number of vectors in each cluster to get the average.
+	for i, centroid := range newCentroids {
+		if counts[i] > 0 {
+			for j := range ivf.vectorDimentions {
+				centroid[j] /= float32(counts[i])
+			}
+		}
+	}
+
 	// newCentroids[k] is still the SUM of the cluster k's members
 	return newCentroids, counts
 }
 
 // updateCentroidsMiniBatch adjusts each centroid using a “learningRate” approach.
-func (ivf *IVFFlat) updateCentroidsMiniBatch(batchSums [][]float32, counts []int, lr float32) {
-	// For each cluster k, if we had 'counts[k]' vectors in the batch, we compute the average
-	// and shift the centroid.
+func (ivf *IVFFlat) updateCentroidsMiniBatch(batchSize int, newCentroids [][]float32, counts []int) {
+	// We take the average and shift the centroid in its direction.
 	centData := ivf.centroids.Dense.Data().([]float32)
-
 	for k := range ivf.numberCentroids {
-		if counts[k] == 0 {
-			continue
-		}
 		for d := range ivf.vectorDimentions {
 			oldVal := centData[k*ivf.vectorDimentions+d]
-			avgVal := batchSums[k][d] / float32(counts[k])
-			// Move centroid toward the batch average accrording to a learning rate.
-			centData[k*ivf.vectorDimentions+d] = oldVal - lr*(oldVal-avgVal)
+			avgVal := newCentroids[k][d]
+			// Compute a weighted learning rate based on the number of vectors in the batch compared to the total batch size.
+			lrWeighted := ivf.learningRate * (float32(counts[k]) / float32(batchSize))
+			// Move centroid toward the batch average accrording to a weighted learning rate.
+			centData[k*ivf.vectorDimentions+d] = oldVal - (lrWeighted * (oldVal - avgVal))
 		}
 	}
 }
