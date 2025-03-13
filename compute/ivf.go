@@ -10,19 +10,26 @@ import (
 )
 
 // IVFFlat holds data needed for an IVF-Flat index.
-type IVFFlat struct {
+type IVFFlat interface {
+	// NearestCentroids finds the nearest centroids
+	NearestCentroids(query []uint8, topK int) (nearest []int, similarity []float32)
+	// TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
+	TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int)
+}
+
+type ivfflat struct {
 	learningRate     float32
 	numberCentroids  int    // Number of centroids (clusters)
 	vectorDimentions int    // Dimension of each vector
 	centroids        Matrix // Shape: flat<[numberCentroids, vectorDimentions]>
 }
 
-// NewIVFFlat creates a new (empty) IVFFlat struct.
-func NewIVFFlat(randomMatrix [][]uint8, learningRate float32) (ivf *IVFFlat, err error) {
+// Newivfflat creates a new (empty) ivfflat struct.
+func Newivfflat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err error) {
 	if len(randomMatrix) == 0 {
 		return nil, errors.New("random matrix is empty")
 	}
-	ivf = &IVFFlat{
+	ivf = &ivfflat{
 		learningRate:     learningRate,
 		numberCentroids:  len(randomMatrix),
 		vectorDimentions: len(randomMatrix[0]),
@@ -32,7 +39,7 @@ func NewIVFFlat(randomMatrix [][]uint8, learningRate float32) (ivf *IVFFlat, err
 }
 
 // NearestCentroids finds the nearest centroids
-func (ivf *IVFFlat) NearestCentroids(query []uint8, topK int) (nearest []int, similarity []float32) {
+func (ivf *ivfflat) NearestCentroids(query []uint8, topK int) (nearest []int, similarity []float32) {
 	centroidSimilarities := NewTensor(query).CosineSimilarity(ivf.centroids)
 	type results struct {
 		index      int
@@ -55,7 +62,7 @@ func (ivf *IVFFlat) NearestCentroids(query []uint8, topK int) (nearest []int, si
 }
 
 // TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
-func (ivf *IVFFlat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
+func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
 	for batchPointer := range batchChan {
 		if batchPointer == nil {
 			break
@@ -141,7 +148,7 @@ func (ivf *IVFFlat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 // computeBatchAverages returns (avgVectors, counts) where:
 // avgVectors[k] is the sum of all vectors assigned to cluster k (we'll divide later) and
 // counts[k] is how many vectors go to cluster k.
-func (ivf *IVFFlat) computeBatchAverages(batch [][]float32, assignments []int) ([][]float32, []int) {
+func (ivf *ivfflat) computeBatchAverages(batch [][]float32, assignments []int) ([][]float32, []int) {
 	newCentroids := make([][]float32, ivf.numberCentroids)
 	for i := range ivf.numberCentroids {
 		newCentroids[i] = make([]float32, ivf.vectorDimentions)
@@ -171,7 +178,7 @@ func (ivf *IVFFlat) computeBatchAverages(batch [][]float32, assignments []int) (
 }
 
 // updateCentroidsMiniBatch adjusts each centroid using a “learningRate” approach.
-func (ivf *IVFFlat) updateCentroidsMiniBatch(batchSize int, newCentroids [][]float32, counts []int) {
+func (ivf *ivfflat) updateCentroidsMiniBatch(batchSize int, newCentroids [][]float32, counts []int) {
 	// We take the average and shift the centroid in its direction.
 	centData := ivf.centroids.Dense.Data().([]float32)
 	for k := range ivf.numberCentroids {
