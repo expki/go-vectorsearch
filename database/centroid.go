@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/klauspost/compress/zstd"
 )

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/noop"
 	"github.com/expki/go-vectorsearch/static"
 
 	"github.com/expki/go-vectorsearch/ai"
@@ -81,13 +82,14 @@ func main() {
 
 	// AI
 	log.Default().Println("Loading AI...")
-	ollama, err := ai.NewOllama(cfg.Ollama)
+	aiClient, err := noop.NewOllama(cfg.Ollama)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}
-	test, err := ollama.Embed(appCtx, ai.EmbedRequest{Model: cfg.Ollama.Embed, Input: []string{"Test"}})
+
+	test, err := aiClient.Embed(appCtx, ai.EmbedRequest{Model: cfg.Ollama.Embed, Input: []string{"Test"}})
 	if err != nil || len(test.Embeddings) == 0 {
-		logger.Sugar().Fatalf("ollama.Embed: %v", err)
+		logger.Sugar().Fatalf("aiClient.Embed: %v", err)
 	}
 
 	// Database
@@ -106,7 +108,7 @@ func main() {
 
 	// Server
 	log.Default().Println("Loading Server...")
-	s := server.New(cfg, db, ollama)
+	srv := server.New(cfg, db, aiClient)
 
 	// Create mux
 	mux := http.NewServeMux()
@@ -183,9 +185,9 @@ func main() {
 
 	// Routes
 	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(static.Files)))))
-	mux.Handle("/api/upload", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(s.UploadHttp)))))
-	mux.Handle("/api/search", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(s.SearchHttp)))))
-	mux.Handle("/api/chat", middlewareHeaders(middlewareDecompression(http.HandlerFunc(s.ChatHttp))))
+	mux.Handle("/api/upload", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.UploadHttp)))))
+	mux.Handle("/api/search", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.SearchHttp)))))
+	mux.Handle("/api/chat", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.ChatHttp))))
 
 	// Start servers
 	serverDone := make(chan struct{})
@@ -231,7 +233,6 @@ func main() {
 	server2.Close()
 	stopApp()
 	db.Close()
-	db.Cache.Close()
 	logger.Sugar().Info("Server stopped")
 }
 

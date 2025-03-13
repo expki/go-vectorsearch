@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
+	_ "github.com/expki/go-vectorsearch/env"
 )
 
 // NewIVFFlat implementes a fake compute.NewIVFFlat
-func NewIVFFlat(randomMatrix [][]uint8) (ivf compute.IVFFlat, _ error) {
+func NewIVFFlat(randomMatrix [][]uint8, _ float32) (ivf compute.IVFFlat, _ error) {
 	var seed int64
 	raw := make([]byte, 8)
 	_, err := crand.Read(raw)

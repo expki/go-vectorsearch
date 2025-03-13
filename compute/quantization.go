@@ -1,5 +1,9 @@
 package compute
 
+import (
+	_ "github.com/expki/go-vectorsearch/env"
+)
+
 func Quantize(value float32, min float32, max float32) (valueQuantized uint8) {
 	if value < min {
 		value = min

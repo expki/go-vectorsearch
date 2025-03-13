@@ -13,6 +13,7 @@ import (
 
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
+	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
