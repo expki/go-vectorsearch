@@ -133,14 +133,14 @@ func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 		}
 		batchAssignments := argmaxAssignments.Data().([]int)
 
+		// Send the assignments to the main thread
+		assignmentChan <- batchAssignments
+
 		// Calculate mini-batch centroids
 		newCentroids, counts := ivf.computeBatchAverages(matrix, batchAssignments)
 
 		// Update centroids with mini-batch centroids
 		ivf.updateCentroidsMiniBatch(batchSize, newCentroids, counts)
-
-		// Send the assignments to the main thread
-		assignmentChan <- batchAssignments
 	}
 	close(assignmentChan)
 }
