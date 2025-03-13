@@ -189,7 +189,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		}
 
 		// assign vectors to centroids based on training results
-		matrixMap := make(map[int][][]uint8, len(batch))
+		matrixMap := make(map[int][][]uint8, centroidFileCount)
 		for idx := range centroidFileCount {
 			matrixMap[idx] = make([][]uint8, 0, len(batch))
 		}
