@@ -13,8 +13,8 @@ import (
 type IVFFlat interface {
 	// NearestCentroids finds the nearest centroids
 	NearestCentroids(query []uint8, topK int) (nearest []int, similarity []float32)
-	// TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
-	TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int)
+	// TrainIVF performs batch assignment and mini-batch training from batches of data.
+	TrainIVF() (train func(batch [][]uint8) (assignments []int), done func())
 }
 
 // Newivfflat creates a new (empty) ivfflat struct.
@@ -62,7 +62,7 @@ func (ivf *ivfflat) NearestCentroids(query []uint8, topK int) (nearest []int, si
 }
 
 // TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
-func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
+func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int), done func()) {
 	create := func(batchSize int) (dataNode, centroidsNode, distances *gorgonia.Node, machine typeMachinePartial) {
 		// Build a Gorgonia graph to compute assignments
 		g := gorgonia.NewGraph()
@@ -99,78 +99,72 @@ func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 		prevBatchSize                      int
 	)
 
-	// Retrieve batches from stream
-	for batchPointer := range batchChan {
-		if batchPointer == nil {
-			break
-		}
-		batch := *batchPointer
-		if len(batch) == 0 {
-			break
-		}
+	// Retrieve batches and assign centroids
+	return func(batch [][]uint8) (assignments []int) {
+			// Now we have a batch of shape [newBatchSize][dimension].
+			newBatchSize := len(batch)
 
-		// Now we have a batch of shape [newBatchSize][dimension].
-		newBatchSize := len(batch)
+			// Handle batch size change
+			if newBatchSize != prevBatchSize {
+				if machine != nil {
+					machine.Close()
+				}
+				dataNode, centroidsNode, distances, machine = create(newBatchSize)
+				prevBatchSize = newBatchSize
+			}
 
-		// Handle batch size change
-		if newBatchSize != prevBatchSize {
+			// Dequantize the batch
+			matrix := DequantizeMatrix(batch, -1, 1)
+
+			// Flatten batch data
+			dataFlat := make([]float32, newBatchSize*ivf.vectorDimentions)
+			for idx, vector := range matrix {
+				copy(dataFlat[idx*ivf.vectorDimentions:(idx+1)*ivf.vectorDimentions], vector)
+			}
+
+			// New data
+			dataTensor := tensor.New(tensor.WithShape(newBatchSize, ivf.vectorDimentions), tensor.WithBacking(dataFlat))
+			err := gorgonia.Let(dataNode, dataTensor)
+			if err != nil {
+				panic(err)
+			}
+
+			// Current centroids
+			centroidCopy := ivf.centroids.Dense.Clone().(*tensor.Dense)
+			err = gorgonia.Let(centroidsNode, centroidCopy)
+			if err != nil {
+				panic(err)
+			}
+
+			// Compute
+			err = machine.RunAll()
+			if err != nil {
+				panic(err)
+			}
+
+			// Argmax to get cluster assignments for this batch.
+			argmaxAssignments, err := tensor.Argmin(distances.Value().(tensor.Tensor), 0)
+			if err != nil {
+				panic(err)
+			}
+			assignments = argmaxAssignments.Data().([]int)
+
+			// Calculate mini-batch centroids
+			newCentroids, counts := ivf.computeBatchAverages(matrix, assignments)
+
+			// Update centroids with mini-batch centroids
+			ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
+
+			// Reset for next run
+			machine.Reset()
+
+			// return assingments
+			return assignments
+		}, func() {
 			if machine != nil {
 				machine.Close()
 			}
-			dataNode, centroidsNode, distances, machine = create(newBatchSize)
-			prevBatchSize = newBatchSize
 		}
-
-		// Dequantize the batch
-		matrix := DequantizeMatrix(batch, -1, 1)
-
-		// Flatten batch data
-		dataFlat := make([]float32, newBatchSize*ivf.vectorDimentions)
-		for idx, vector := range matrix {
-			copy(dataFlat[idx*ivf.vectorDimentions:(idx+1)*ivf.vectorDimentions], vector)
-		}
-
-		// New data
-		dataTensor := tensor.New(tensor.WithShape(newBatchSize, ivf.vectorDimentions), tensor.WithBacking(dataFlat))
-		err := gorgonia.Let(dataNode, dataTensor)
-		if err != nil {
-			panic(err)
-		}
-
-		// Current centroids
-		centroidCopy := ivf.centroids.Dense.Clone().(*tensor.Dense)
-		err = gorgonia.Let(centroidsNode, centroidCopy)
-		if err != nil {
-			panic(err)
-		}
-
-		// Compute
-		err = machine.RunAll()
-		if err != nil {
-			panic(err)
-		}
-
-		// Argmax to get cluster assignments for this batch.
-		argmaxAssignments, err := tensor.Argmin(distances.Value().(tensor.Tensor), 0)
-		if err != nil {
-			panic(err)
-		}
-		batchAssignments := argmaxAssignments.Data().([]int)
-
-		// Send the assignments to the main thread
-		assignmentChan <- batchAssignments
-
-		// Calculate mini-batch centroids
-		newCentroids, counts := ivf.computeBatchAverages(matrix, batchAssignments)
-
-		// Update centroids with mini-batch centroids
-		ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
-
-		// Reset for next run
-		machine.Reset()
-	}
-	close(assignmentChan)
-	machine.Close()
 }
 
 // computeBatchAverages returns (avgVectors, counts) where:

@@ -43,17 +43,13 @@ func (ivf *noivf) NearestCentroids(query []uint8, topK int) (nearest []int, simi
 }
 
 // TrainIVFStreaming implementes a fake compute.TrainIVFStreaming
-func (ivf *noivf) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
-	for batch := range batchChan {
-		if batch == nil {
-			break
-		}
-		count := len(*batch)
-		assingment := make([]int, 0, count)
+func (ivf *noivf) TrainIVF() (train func(batch [][]uint8) (assignments []int), done func()) {
+	return func(batch [][]uint8) (assignments []int) {
+		count := len(batch)
+		assignments = make([]int, 0, count)
 		for range count {
-			assingment = append(assingment, ivf.random.Intn(ivf.numberCentroids))
+			assignments = append(assignments, ivf.random.Intn(ivf.numberCentroids))
 		}
-		assignmentChan <- assingment
-	}
-	close(assignmentChan)
+		return assignments
+	}, func() {}
 }

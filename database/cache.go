@@ -144,7 +144,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 	// Open index files and write streams
 	db.Cache.centroids = make([]*centroid, centroidFileCount)
 	streamList := make([]chan *[][]uint8, centroidFileCount)
-	for idx := range centroidDocuments {
+	for idx := range centroidFileCount {
 		path := filepath.Join(db.Cache.path, fmt.Sprintf("centroid_%d.cache", idx))
 		file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
@@ -165,24 +165,20 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		}
 	}()
 
-	// Open IVF training stream
-	batchChan := make(chan *[][]uint8, 1)
-	defer close(batchChan)
-	assignmentChan := make(chan []int, 1)
-	go db.Cache.ivf.TrainIVFStreaming(batchChan, assignmentChan)
+	// Open IVF training
+	ivfTraining, ivfDone := db.Cache.ivf.TrainIVF()
+	defer ivfDone()
 
 	// Retrieve and train IVFFlat index
-	bar := progressbar.Default(total, "Building IVF Flat Index Cache")
+	bar := progressbar.Default(total, "Building IVF Flat Index Cache...")
 	var batch []Document
-	var syncLock sync.Mutex
 	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		// send batch for training index
 		matrixTrain := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrixTrain[idx] = result.Vector
 		}
-		syncLock.Lock()
-		batchChan <- &matrixTrain
+		assignments := ivfTraining(matrixTrain)
 
 		// prefix document id to vector for cache
 		matrix := make([][]uint8, len(batch))
@@ -197,16 +193,15 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		for idx := range centroidFileCount {
 			matrixMap[idx] = make([][]uint8, 0, len(batch))
 		}
-		for vectorIdx, centroidIdx := range <-assignmentChan {
+		for vectorIdx, centroidIdx := range assignments {
 			matrixMap[centroidIdx] = append(matrixMap[centroidIdx], matrix[vectorIdx])
 		}
 
 		// write vectors to cache files
-		for idx := range centroidFileCount {
-			copy := matrixMap[idx]
+		for idx, batchWrite := range matrixMap {
+			copy := batchWrite
 			streamList[idx] <- &copy
 		}
-		syncLock.Unlock()
 
 		bar.Add(len(matrix))
 		return nil
