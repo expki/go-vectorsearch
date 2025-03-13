@@ -6,6 +6,7 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math/rand"
 	"time"
@@ -40,10 +41,10 @@ func NoAI() ai.AI {
 
 func (n *noai) Embed(_ context.Context, request ai.EmbedRequest) (response ai.EmbedResponse, err error) {
 	if len(request.Input) == 0 {
-		return
+		return response, errors.New("input is empty")
 	}
-	response.Embeddings = make(ai.Embeddings, len(response.Embeddings))
-	for idx := range len(response.Embeddings) {
+	response.Embeddings = make(ai.Embeddings, len(request.Input))
+	for idx := range len(request.Input) {
 		raw := make([]byte, embeddingVectorSize)
 		n.random.Read(raw)
 		row := make([]ai.EmbeddingValue, embeddingVectorSize)

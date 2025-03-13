@@ -93,26 +93,24 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 			logger.Sugar().Errorf("failed to get file info for %q: %v", file.Name(), err)
 			continue
 		}
+		if !strings.HasPrefix(info.Name(), "centroid_") || !strings.HasPrefix(info.Name(), ".cache") {
+			continue
+		}
+		indexString, _ := strings.CutPrefix(info.Name(), "centroid_")
+		indexString, _ = strings.CutSuffix(indexString, ".cache")
+		index, err := strconv.Atoi(indexString)
+		if err != nil {
+			logger.Sugar().Errorf("failed to parse index from file name %q: %v", info.Name(), err)
+			continue
+		}
 		filePath := filepath.Join(cfg.Cache, file.Name())
 		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
 			logger.Sugar().Errorf("failed to open cache file %q: %v", filePath, err)
 			return nil, err
 		}
-		switch info.Name() {
-		case "database.cache":
-			db.Cache.file = file
-		default:
-			indexString, _ := strings.CutPrefix(info.Name(), "centroid_")
-			indexString, _ = strings.CutSuffix(indexString, ".cache")
-			index, err := strconv.Atoi(indexString)
-			if err != nil {
-				logger.Sugar().Errorf("failed to parse index from file name %q: %v", info.Name(), err)
-				continue
-			}
-			centroid := &centroid{Idx: index, file: file}
-			db.Cache.centroids = append(db.Cache.centroids, centroid)
-		}
+		centroid := &centroid{Idx: index, file: file}
+		db.Cache.centroids = append(db.Cache.centroids, centroid)
 	}
 	sort.Slice(db.Cache.centroids, func(i, j int) bool {
 		return db.Cache.centroids[i].Idx < db.Cache.centroids[j].Idx // ascending order
