@@ -6,6 +6,7 @@ import (
 	"gorgonia.org/tensor"
 )
 
+// TODO: Reuse graph and machine
 func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	g := gorgonia.NewGraph()
 
