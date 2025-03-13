@@ -21,9 +21,8 @@ type centroid struct {
 	file *os.File
 }
 
-func (c *centroid) writeInBatches(stream <-chan *[][]uint8) {
+func (c *centroid) createRowWriter(vectorDimensions int) (rowWriter func(row []uint8), done func()) {
 	c.lock.Lock()
-	defer c.lock.Unlock()
 
 	// move to start of file
 	c.file.Seek(0, io.SeekStart)
@@ -50,52 +49,26 @@ func (c *centroid) writeInBatches(stream <-chan *[][]uint8) {
 		return
 	}
 
-	// read first batch
-	batchPointer, hasMore := <-stream
-	if batchPointer == nil {
-		writeTotal(c.file, 0)
-		encoder.Close()
-		c.file.Sync()
-		return
-	}
-	batch := *batchPointer
-	if len(batch) == 0 {
-		writeTotal(c.file, 0)
-		encoder.Close()
-		c.file.Sync()
-		return
-	}
+	// Buffer
+	encoderBuffer := bufio.NewWriterSize(encoder, (vectorDimensions+8)*config.BATCH_SIZE_DATABASE)
 
-	encoderBuffer := bufio.NewWriterSize(encoder, (len(batch[0])+8)*config.BATCH_SIZE_DATABASE)
-
-	// write the data
+	// Track total
 	var total uint64
-	for {
-		for _, row := range batch {
+
+	return func(row []uint8) {
 			encoderBuffer.Write(row)
 			total++
+		}, func() {
+			// update total count
+			c.file.Seek(8, io.SeekStart)
+			writeTotal(c.file, total)
+
+			// close writing to file
+			encoderBuffer.Flush()
+			encoder.Close()
+			c.file.Sync()
+			c.lock.Unlock()
 		}
-
-		// stop if no more data is available
-		if !hasMore {
-			break
-		}
-
-		// read next batch
-		batchPointer, hasMore = <-stream
-		if batchPointer == nil {
-			break
-		}
-		batch = *batchPointer
-	}
-
-	// update total count
-	c.file.Seek(8, io.SeekStart)
-	writeTotal(c.file, total)
-
-	encoderBuffer.Flush()
-	encoder.Close()
-	c.file.Sync()
 }
 
 func (c *centroid) readInBatches(ctx context.Context, vectorSize int, openStream chan<- *[][]uint8) {

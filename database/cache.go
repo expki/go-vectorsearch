@@ -143,7 +143,8 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 
 	// Open index files and write streams
 	db.Cache.centroids = make([]*centroid, centroidFileCount)
-	streamList := make([]chan *[][]uint8, centroidFileCount)
+	rowWriterList := make([]func(row []uint8), centroidFileCount)
+	rowWriterCloserList := make([]func(), centroidFileCount)
 	for idx := range centroidFileCount {
 		path := filepath.Join(db.Cache.path, fmt.Sprintf("centroid_%d.cache", idx))
 		file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
@@ -155,13 +156,11 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 			Idx:  idx,
 			file: file,
 		}
-		stream := make(chan *[][]uint8, config.STREAM_QUEUE_SIZE)
-		go db.Cache.centroids[idx].writeInBatches(stream)
-		streamList[idx] = stream
+		rowWriterList[idx], rowWriterCloserList[idx] = db.Cache.centroids[idx].createRowWriter(db.Cache.vectorSize)
 	}
 	defer func() {
-		for _, stream := range streamList {
-			close(stream)
+		for _, closer := range rowWriterCloserList {
+			closer()
 		}
 	}()
 
@@ -180,30 +179,16 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		}
 		assignments := ivfTraining(matrixTrain)
 
-		// prefix document id to vector for cache
-		matrix := make([][]uint8, len(batch))
-		for idx, result := range batch {
-			matrix[idx] = make([]byte, 8+len(result.Vector))
-			binary.LittleEndian.PutUint64(matrix[idx], result.ID)
-			copy(matrix[idx][8:], result.Vector)
-		}
-
-		// assign vectors to centroids based on training results
-		matrixMap := make(map[int][][]uint8, centroidFileCount)
-		for idx := range centroidFileCount {
-			matrixMap[idx] = make([][]uint8, 0, len(batch))
-		}
+		// write each row to assigned centroid file
 		for vectorIdx, centroidIdx := range assignments {
-			matrixMap[centroidIdx] = append(matrixMap[centroidIdx], matrix[vectorIdx])
+			result := batch[vectorIdx]
+			row := make([]byte, 8+db.Cache.vectorSize)
+			binary.LittleEndian.PutUint64(row[:8], result.ID)
+			copy(row[8:], result.Vector)
+			rowWriterList[centroidIdx](row)
 		}
 
-		// write vectors to cache files
-		for idx, batchWrite := range matrixMap {
-			copy := batchWrite
-			streamList[idx] <- &copy
-		}
-
-		bar.Add(len(matrix))
+		bar.Add(len(batch))
 		return nil
 	})
 	if result.Error != nil {
