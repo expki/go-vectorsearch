@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
@@ -24,7 +25,8 @@ type noai struct {
 	random *rand.Rand
 }
 
-func NoAI() ai.AI {
+// NewOllama implementes a fake ai.NewOllama
+func NewOllama(_ config.Ollama) (ai ai.AI, _ error) {
 	var seed int64
 	raw := make([]byte, 8)
 	_, err := crand.Read(raw)
@@ -36,9 +38,10 @@ func NoAI() ai.AI {
 	}
 	return &noai{
 		random: rand.New(rand.NewSource(seed)),
-	}
+	}, nil
 }
 
+// Embed implementes a fake ai.Embed
 func (n *noai) Embed(_ context.Context, request ai.EmbedRequest) (response ai.EmbedResponse, err error) {
 	if len(request.Input) == 0 {
 		return response, errors.New("input is empty")
@@ -56,6 +59,7 @@ func (n *noai) Embed(_ context.Context, request ai.EmbedRequest) (response ai.Em
 	return
 }
 
+// Generate implementes a fake ai.Generate
 func (n *noai) Generate(_ context.Context, request ai.GenerateRequest) (response ai.GenerateResponse, err error) {
 	raw := make([]byte, n.random.Intn(generateMaxLength))
 	n.random.Read(raw)
@@ -63,12 +67,14 @@ func (n *noai) Generate(_ context.Context, request ai.GenerateRequest) (response
 	return
 }
 
+// GenerateStream implementes a fake ai.GenerateStream
 func (n *noai) GenerateStream(_ context.Context, request ai.GenerateRequest) (stream io.Reader) {
 	raw := make([]byte, n.random.Intn(generateMaxLength))
 	n.random.Read(raw)
 	return bytes.NewBuffer([]byte(hex.EncodeToString(raw)))
 }
 
+// Chat implementes a fake ai.Chat
 func (n *noai) Chat(_ context.Context, request ai.ChatRequest) (response ai.ChatResponse, err error) {
 	raw := make([]byte, n.random.Intn(generateMaxLength))
 	n.random.Read(raw)
@@ -76,6 +82,7 @@ func (n *noai) Chat(_ context.Context, request ai.ChatRequest) (response ai.Chat
 	return
 }
 
+// ChatStream implementes a fake ai.ChatStream
 func (n *noai) ChatStream(_ context.Context, request ai.ChatRequest) (stream io.Reader) {
 	raw := make([]byte, n.random.Intn(generateMaxLength))
 	n.random.Read(raw)
