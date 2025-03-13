@@ -130,5 +130,6 @@ func (d *Database) Close() error {
 		logger.Sugar().Errorf("failed to close database connection: %v", err)
 		return err
 	}
+	d.Cache.Close()
 	return nil
 }

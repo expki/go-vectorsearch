@@ -174,20 +174,22 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 	// Retrieve and train IVFFlat index
 	bar := progressbar.Default(total, "Building IVF Flat Index Cache")
 	var batch []Document
+	var syncLock sync.Mutex
 	result = db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "vector").FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		// send batch for training index
 		matrixTrain := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrixTrain[idx] = result.Vector
 		}
+		syncLock.Lock()
 		batchChan <- &matrixTrain
 
 		// prefix document id to vector for cache
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
-			matrix[idx] = make([]byte, 8, 8+len(result.Vector))
+			matrix[idx] = make([]byte, 8+len(result.Vector))
 			binary.LittleEndian.PutUint64(matrix[idx], result.ID)
-			matrix[idx] = append(matrix[idx], result.Vector...)
+			copy(matrix[idx][8:], result.Vector)
 		}
 
 		// assign vectors to centroids based on training results
@@ -204,6 +206,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 			copy := matrixMap[idx]
 			streamList[idx] <- &copy
 		}
+		syncLock.Unlock()
 
 		bar.Add(len(matrix))
 		return nil

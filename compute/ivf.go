@@ -63,45 +63,13 @@ func (ivf *ivfflat) NearestCentroids(query []uint8, topK int) (nearest []int, si
 
 // TrainIVFStreaming performs batch assignment and mini-batch training from batches of data.
 func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int) {
-	for batchPointer := range batchChan {
-		if batchPointer == nil {
-			break
-		}
-		batch := *batchPointer
-		if len(batch) == 0 {
-			break
-		}
-
-		// Now we have a batch of shape [batchSize][dimension].
-		batchSize := len(batch)
-
-		// Dequantize the batch
-		matrix := DequantizeMatrix(batch, -1, 1)
-
-		// Flatten batch data
-		dataFlat := make([]float32, 0, batchSize*ivf.vectorDimentions)
-		for _, vector := range matrix {
-			dataFlat = append(dataFlat, vector...)
-		}
-
-		// Build a Gorgonia graph to compute assignments for this batch.
+	create := func(batchSize int) (dataNode, centroidsNode, distances *gorgonia.Node, machine typeMachinePartial) {
+		// Build a Gorgonia graph to compute assignments
 		g := gorgonia.NewGraph()
 
-		// New data
-		dataTensor := tensor.New(tensor.WithShape(batchSize, ivf.vectorDimentions), tensor.WithBacking(dataFlat))
-		dataNode := gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(batchSize, ivf.vectorDimentions), gorgonia.WithName("data"))
-		err := gorgonia.Let(dataNode, dataTensor)
-		if err != nil {
-			panic(err)
-		}
-
-		// Current centroids
-		centroidsNode := gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(ivf.numberCentroids, ivf.vectorDimentions), gorgonia.WithName("centroids"))
-		centroidCopy := ivf.centroids.Dense.Clone().(*tensor.Dense)
-		err = gorgonia.Let(centroidsNode, centroidCopy)
-		if err != nil {
-			panic(err)
-		}
+		// Placeholder for data
+		dataNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(batchSize, ivf.vectorDimentions), gorgonia.WithName("data"))
+		centroidsNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(ivf.numberCentroids, ivf.vectorDimentions), gorgonia.WithName("centroids"))
 
 		// Reshape
 		dataExp := gorgonia.Must(gorgonia.Reshape(dataNode, []int{1, batchSize, ivf.vectorDimentions}))
@@ -116,15 +84,71 @@ func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 		// Distances
 		diff := gorgonia.Must(gorgonia.Sub(dataBroadcasted, centBroadcasted))
 		sq := gorgonia.Must(gorgonia.Square(diff))
-		distances := gorgonia.Must(gorgonia.Sum(sq, 2)) // shape: [batchSize, nlist]
+		distances = gorgonia.Must(gorgonia.Sum(sq, 2)) // shape: [batchSize, nlist]
+
+		// Create the TapeMachine
+		machine = gorgonia.NewTapeMachine(g)
+
+		return
+	}
+
+	// Machine variables
+	var (
+		dataNode, centroidsNode, distances *gorgonia.Node
+		machine                            typeMachinePartial
+		prevBatchSize                      int
+	)
+
+	// Retrieve batches from stream
+	for batchPointer := range batchChan {
+		if batchPointer == nil {
+			break
+		}
+		batch := *batchPointer
+		if len(batch) == 0 {
+			break
+		}
+
+		// Now we have a batch of shape [newBatchSize][dimension].
+		newBatchSize := len(batch)
+
+		// Handle batch size change
+		if newBatchSize != prevBatchSize {
+			if machine != nil {
+				machine.Close()
+			}
+			dataNode, centroidsNode, distances, machine = create(newBatchSize)
+			prevBatchSize = newBatchSize
+		}
+
+		// Dequantize the batch
+		matrix := DequantizeMatrix(batch, -1, 1)
+
+		// Flatten batch data
+		dataFlat := make([]float32, newBatchSize*ivf.vectorDimentions)
+		for idx, vector := range matrix {
+			copy(dataFlat[idx*ivf.vectorDimentions:(idx+1)*ivf.vectorDimentions], vector)
+		}
+
+		// New data
+		dataTensor := tensor.New(tensor.WithShape(newBatchSize, ivf.vectorDimentions), tensor.WithBacking(dataFlat))
+		err := gorgonia.Let(dataNode, dataTensor)
+		if err != nil {
+			panic(err)
+		}
+
+		// Current centroids
+		centroidCopy := ivf.centroids.Dense.Clone().(*tensor.Dense)
+		err = gorgonia.Let(centroidsNode, centroidCopy)
+		if err != nil {
+			panic(err)
+		}
 
 		// Compute
-		machine := gorgonia.NewTapeMachine(g)
 		err = machine.RunAll()
 		if err != nil {
 			panic(err)
 		}
-		machine.Close()
 
 		// Argmax to get cluster assignments for this batch.
 		argmaxAssignments, err := tensor.Argmin(distances.Value().(tensor.Tensor), 0)
@@ -140,9 +164,13 @@ func (ivf *ivfflat) TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentCha
 		newCentroids, counts := ivf.computeBatchAverages(matrix, batchAssignments)
 
 		// Update centroids with mini-batch centroids
-		ivf.updateCentroidsMiniBatch(batchSize, newCentroids, counts)
+		ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
+
+		// Reset for next run
+		machine.Reset()
 	}
 	close(assignmentChan)
+	machine.Close()
 }
 
 // computeBatchAverages returns (avgVectors, counts) where:
@@ -191,4 +219,10 @@ func (ivf *ivfflat) updateCentroidsMiniBatch(batchSize int, newCentroids [][]flo
 			centData[k*ivf.vectorDimentions+d] = oldVal - (lrWeighted * (oldVal - avgVal))
 		}
 	}
+}
+
+type typeMachinePartial interface {
+	Close() error
+	Reset()
+	RunAll() error
 }
