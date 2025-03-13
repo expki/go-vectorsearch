@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -26,16 +25,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 )
-
-// LOCK_THREAD enables cuda functionality
-var LOCK_THREAD string = "0"
-
-func init() {
-	if LOCK_THREAD == "1" {
-		runtime.LockOSThread()
-		log.Default().Println("Cuda runtime is locked to single thread")
-	}
-}
 
 func main() {
 	appCtx, stopApp := context.WithCancel(context.Background())

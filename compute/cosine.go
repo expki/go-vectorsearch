@@ -46,6 +46,7 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	return cosineSim.Value().Data().([]float32)
 }
 
+// TODO: This function does not handle matrixes of different sizes
 func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, bestMatches []int) {
 	g := gorgonia.NewGraph()
 
