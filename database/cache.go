@@ -25,7 +25,7 @@ type Cache struct {
 
 	lock      sync.RWMutex
 	centroids []*centroid
-	ivf       *compute.IVFFlat
+	ivf       compute.IVFFlat
 }
 
 func (c *Cache) LastUpdated() time.Time {

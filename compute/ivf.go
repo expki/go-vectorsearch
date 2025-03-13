@@ -17,15 +17,8 @@ type IVFFlat interface {
 	TrainIVFStreaming(batchChan <-chan *[][]uint8, assignmentChan chan<- []int)
 }
 
-type ivfflat struct {
-	learningRate     float32
-	numberCentroids  int    // Number of centroids (clusters)
-	vectorDimentions int    // Dimension of each vector
-	centroids        Matrix // Shape: flat<[numberCentroids, vectorDimentions]>
-}
-
 // Newivfflat creates a new (empty) ivfflat struct.
-func Newivfflat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err error) {
+func NewIVFFlat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err error) {
 	if len(randomMatrix) == 0 {
 		return nil, errors.New("random matrix is empty")
 	}
@@ -36,6 +29,13 @@ func Newivfflat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err 
 		centroids:        NewMatrix(randomMatrix),
 	}
 	return ivf, nil
+}
+
+type ivfflat struct {
+	learningRate     float32
+	numberCentroids  int    // Number of centroids (clusters)
+	vectorDimentions int    // Dimension of each vector
+	centroids        Matrix // Shape: flat<[numberCentroids, vectorDimentions]>
 }
 
 // NearestCentroids finds the nearest centroids
