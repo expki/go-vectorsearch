@@ -152,8 +152,6 @@ func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int),
 			// Calculate mini-batch centroids
 			newCentroids, counts := ivf.computeBatchAverages(matrix, assignments)
 
-			// TODO: updateCentroidsMiniBatch does not produce expected results. All centroids seem to converge.
-
 			// Update centroids with mini-batch centroids
 			ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
 
