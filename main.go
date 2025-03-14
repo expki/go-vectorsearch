@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// Logger
-	log.Default().Println("Loading logger...")
+	log.Default().Println("Setting log level:", cfg.LogLevel.String())
 	logConf := zap.NewDevelopmentConfig()
 	logConf.Level = cfg.LogLevel.Zap()
 	l, err := logConf.Build()
@@ -70,7 +70,7 @@ func main() {
 	defer l.Sync()
 
 	// AI
-	log.Default().Println("Loading AI...")
+	logger.Sugar().Info("Loading AI...")
 	aiClient, err := noop.NewOllama(cfg.Ollama)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
@@ -82,21 +82,21 @@ func main() {
 	}
 
 	// Database
-	logger.Sugar().Debug("Loading database...")
+	logger.Sugar().Info("Loading database...")
 	db, err := database.New(cfg, len(test.Embeddings.Underlying()[0]))
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
 
 	// Cache
-	logger.Sugar().Debug("Refreshing cache...")
+	logger.Sugar().Info("Refreshing cache...")
 	err = db.RefreshCache(appCtx)
 	if err != nil {
 		logger.Sugar().Fatalf("database.Cache: %v", err)
 	}
 
 	// Server
-	log.Default().Println("Loading Server...")
+	logger.Sugar().Info("Loading Server...")
 	srv := server.New(cfg, db, aiClient)
 
 	// Create mux

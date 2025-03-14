@@ -30,7 +30,7 @@ func CreateSample(path string) error {
 			Sqlite: "./vectors.db",
 		},
 		Cache:    "./cache/",
-		LogLevel: LogLevelError,
+		LogLevel: LogLevelInfo,
 	}
 	raw, err := json.MarshalIndent(sample, "", "    ")
 	if err != nil {

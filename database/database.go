@@ -27,7 +27,7 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	// create logger
 	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
 		SlowThreshold:             30 * time.Second,
-		LogLevel:                  cfg.LogLevel.GORM(),
+		LogLevel:                  cfg.Database.LogLevel.GORM(),
 		IgnoreRecordNotFoundError: false,
 		Colorful:                  true,
 	})
