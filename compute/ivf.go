@@ -25,7 +25,7 @@ func NewIVFFlat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err 
 	ivf = &ivfflat{
 		learningRate:     learningRate,
 		numberCentroids:  len(randomMatrix),
-		vectorDimentions: len(randomMatrix[0]),
+		vectorDimensions: len(randomMatrix[0]),
 		centroids:        NewMatrix(randomMatrix),
 	}
 	return ivf, nil
@@ -34,8 +34,8 @@ func NewIVFFlat(randomMatrix [][]uint8, learningRate float32) (ivf IVFFlat, err 
 type ivfflat struct {
 	learningRate     float32
 	numberCentroids  int    // Number of centroids (clusters)
-	vectorDimentions int    // Dimension of each vector
-	centroids        Matrix // Shape: flat<[numberCentroids, vectorDimentions]>
+	vectorDimensions int    // Dimension of each vector
+	centroids        Matrix // Shape: flat<[numberCentroids, vectorDimensions]>
 }
 
 // NearestCentroids finds the nearest centroids
@@ -68,12 +68,12 @@ func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int),
 		g := gorgonia.NewGraph()
 
 		// Placeholder for data
-		dataNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(batchSize, ivf.vectorDimentions), gorgonia.WithName("data"))
-		centroidsNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(ivf.numberCentroids, ivf.vectorDimentions), gorgonia.WithName("centroids"))
+		dataNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(batchSize, ivf.vectorDimensions), gorgonia.WithName("data"))
+		centroidsNode = gorgonia.NewTensor(g, gorgonia.Float32, 2, gorgonia.WithShape(ivf.numberCentroids, ivf.vectorDimensions), gorgonia.WithName("centroids"))
 
 		// Reshape
-		dataExp := gorgonia.Must(gorgonia.Reshape(dataNode, []int{1, batchSize, ivf.vectorDimentions}))
-		centExp := gorgonia.Must(gorgonia.Reshape(centroidsNode, []int{ivf.numberCentroids, 1, ivf.vectorDimentions}))
+		dataExp := gorgonia.Must(gorgonia.Reshape(dataNode, []int{1, batchSize, ivf.vectorDimensions}))
+		centExp := gorgonia.Must(gorgonia.Reshape(centroidsNode, []int{ivf.numberCentroids, 1, ivf.vectorDimensions}))
 
 		// Broadcast
 		dataBroadcasted, centBroadcasted, err := gorgonia.Broadcast(dataExp, centExp, gorgonia.NewBroadcastPattern([]byte{0}, []byte{1})) // Broadcast along the first dimension
@@ -117,13 +117,13 @@ func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int),
 			matrix := DequantizeMatrix(batch, -1, 1)
 
 			// Flatten batch data
-			dataFlat := make([]float32, newBatchSize*ivf.vectorDimentions)
+			dataFlat := make([]float32, newBatchSize*ivf.vectorDimensions)
 			for idx, vector := range matrix {
-				copy(dataFlat[idx*ivf.vectorDimentions:(idx+1)*ivf.vectorDimentions], vector)
+				copy(dataFlat[idx*ivf.vectorDimensions:(idx+1)*ivf.vectorDimensions], vector)
 			}
 
 			// New data
-			dataTensor := tensor.New(tensor.WithShape(newBatchSize, ivf.vectorDimentions), tensor.WithBacking(dataFlat))
+			dataTensor := tensor.New(tensor.WithShape(newBatchSize, ivf.vectorDimensions), tensor.WithBacking(dataFlat))
 			err := gorgonia.Let(dataNode, dataTensor)
 			if err != nil {
 				panic(err)
@@ -175,7 +175,7 @@ func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int),
 func (ivf *ivfflat) computeBatchAverages(batch [][]float32, assignments []int) ([][]float32, []int) {
 	newCentroids := make([][]float32, ivf.numberCentroids)
 	for i := range ivf.numberCentroids {
-		newCentroids[i] = make([]float32, ivf.vectorDimentions)
+		newCentroids[i] = make([]float32, ivf.vectorDimensions)
 	}
 	counts := make([]int, ivf.numberCentroids)
 
@@ -183,7 +183,7 @@ func (ivf *ivfflat) computeBatchAverages(batch [][]float32, assignments []int) (
 	for i, vec := range batch {
 		c := assignments[i]
 		counts[c]++
-		for d := range ivf.vectorDimentions {
+		for d := range ivf.vectorDimensions {
 			newCentroids[c][d] += vec[d]
 		}
 	}
@@ -191,7 +191,7 @@ func (ivf *ivfflat) computeBatchAverages(batch [][]float32, assignments []int) (
 	// Devide by the number of vectors in each cluster to get the average.
 	for i, centroid := range newCentroids {
 		if counts[i] > 0 {
-			for j := range ivf.vectorDimentions {
+			for j := range ivf.vectorDimensions {
 				centroid[j] /= float32(counts[i])
 			}
 		}
@@ -206,13 +206,13 @@ func (ivf *ivfflat) updateCentroidsMiniBatch(batchSize int, newCentroids [][]flo
 	// We take the average and shift the centroid in its direction.
 	centData := ivf.centroids.Dense.Data().([]float32)
 	for k := range ivf.numberCentroids {
-		for d := range ivf.vectorDimentions {
-			oldVal := centData[k*ivf.vectorDimentions+d]
+		for d := range ivf.vectorDimensions {
+			oldVal := centData[k*ivf.vectorDimensions+d]
 			avgVal := newCentroids[k][d]
 			// Compute a weighted learning rate based on the number of vectors in the batch compared to the total batch size.
 			lrWeighted := ivf.learningRate * (float32(counts[k]) / float32(batchSize))
 			// Move centroid toward the batch average accrording to a weighted learning rate.
-			centData[k*ivf.vectorDimentions+d] = oldVal - (lrWeighted * (oldVal - avgVal))
+			centData[k*ivf.vectorDimensions+d] = oldVal - (lrWeighted * (oldVal - avgVal))
 		}
 	}
 }
