@@ -65,82 +65,8 @@ func (s *server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get documents
-	var documents []database.Document
-	if len(req.DocumentIDs) > 0 {
-		result := s.db.Clauses(dbresolver.Read).WithContext(r.Context()).Find(&documents, req.DocumentIDs)
-		if result.Error != nil {
-			if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-				logger.Sugar().Debugf("%d request canceled after %dms while fetching documents", txid, time.Since(start).Milliseconds())
-				w.WriteHeader(499)
-				io.WriteString(w, `Client canceled request during fetching documents`)
-				return
-			}
-			logger.Sugar().Errorf("%d database document retrieval failed: %v", txid, result.Error)
-			w.WriteHeader(http.StatusInternalServerError)
-			io.WriteString(w, `Retrieving documents failed`)
-			return
-		}
-	}
-	for _, doc := range documents {
-		req.Documents = append(req.Documents, doc.Document.JSON())
-	}
-
-	// Create history chat
-	messages := make([]ai.ChatMessage, len(req.History), len(req.History)+1)
-	for idx, content := range req.History {
-		var role string
-		if idx%2 == 0 {
-			role = "user"
-		} else {
-			role = "assistant"
-		}
-		messages[idx] = ai.ChatMessage{
-			Role:    role,
-			Content: content,
-		}
-	}
-
-	// Add document context
-	var query strings.Builder
-	if len(req.Documents) > 0 {
-		query.WriteString("I have ")
-		query.WriteString(strconv.Itoa(len(req.Documents)))
-		query.WriteString(" text document that I'd like to use as context for my question. Here's the relevant part")
-		if len(req.Documents) > 1 {
-			query.WriteRune('s')
-		}
-		query.WriteString(":\n\n")
-		for _, doc := range req.Documents {
-			query.WriteRune('"')
-			query.WriteString(Flatten(doc))
-			query.WriteRune('"')
-			query.WriteRune('\n')
-		}
-		query.WriteRune('\n')
-	}
-
-	// Construct question
-	query.WriteString("My question is: ")
-
-	// Add query
-	if req.Prefix != "" {
-		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
-	}
-	query.WriteString(req.Text)
-
-	// Construct message
-	messages = append(messages, ai.ChatMessage{
-		Role:    "user",
-		Content: query.String(),
-	})
-
-	// Start chat
-	logger.Sugar().Debugf("%d start chat with ollama", txid)
-	chat := s.ai.ChatStream(r.Context(), ai.ChatRequest{
-		Model:    s.config.Ollama.Chat,
-		Messages: messages,
-	})
+	// Handle the chat request
+	resStream, errStream := s.Chat(r.Context(), req)
 
 	// Chunk flusher
 	flusher, ok := w.(http.Flusher)
@@ -150,45 +76,51 @@ func (s *server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write chat response in chunks
-	buf := make([]byte, 1)
 	for {
-		// Read one byte from the io.Reader
-		n, err := chat.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
+		select {
+		case <-r.Context().Done():
+			// finish reading streams
+			go func() {
+				for range resStream {
+				}
+				for range errStream {
+				}
+			}()
+			return
+		case res, hasMore := <-resStream:
+			if res != nil {
+				w.Write(res)
+				flusher.Flush()
 			}
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-				logger.Sugar().Debugf("%d request canceled after %dms while embedding text", txid, time.Since(start).Milliseconds())
-				w.WriteHeader(499)
-				io.WriteString(w, `Client canceled request during chat`)
+			if !hasMore {
+				logger.Sugar().Infof("%d chat request suceeded (%dms)", txid, time.Since(start).Milliseconds())
 				return
 			}
-			logger.Sugar().Errorf("%d ai chat failed: %v", txid, err)
-			w.WriteHeader(http.StatusInternalServerError)
-			io.WriteString(w, `Chat failed`)
+		case err := <-errStream:
+			if err == nil {
+				// we are done
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				// chat request canceled
+				logger.Sugar().Warnf("%d chat request canceled after %s", txid, time.Since(start).String())
+			} else {
+				// chat failed
+				logger.Sugar().Errorf("%d chat request failed: %s", txid, err.Error())
+			}
 			return
 		}
-
-		// Write the byte to the response
-		w.Write(buf[:n])
-
-		// Flush the data immediately to the client
-		flusher.Flush()
 	}
-
-	// Done
-	logger.Sugar().Infof("%d chat request suceeded (%dms)", txid, time.Since(start).Milliseconds())
 }
 
 // Chat handles a chat request and returns a stream of bytes for the response.
-func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan byte, errStream <-chan error) {
-	resChan := make(chan byte, 1024)
+func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan []byte, errStream <-chan error) {
+	resChan := make(chan []byte, 1024)
 	errChan := make(chan error, 1)
 
 	go func() {
-		defer close(resChan)
-		defer close(errChan)
+		defer func() {
+			close(resChan)
+			close(errChan)
+		}()
 		// Get documents
 		var documents []database.Document
 		if len(req.DocumentIDs) > 0 {
@@ -279,8 +211,8 @@ func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan by
 			}
 
 			// Write the byte to the response
-			for _, b := range buf[:n] {
-				resChan <- b
+			for idx := range buf[:n] {
+				resChan <- buf[idx : idx+1]
 			}
 		}
 	}()

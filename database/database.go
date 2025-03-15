@@ -49,6 +49,12 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 		logger.Sugar().Debugf("dsn: %+v", readwrite[0])
 		return nil, errors.Join(errors.New("failed to open database connection"), err)
 	}
+	if sqldb, err := godb.DB(); err == nil {
+		sqldb.SetConnMaxIdleTime(5 * time.Minute)
+		sqldb.SetConnMaxLifetime(time.Hour)
+		sqldb.SetMaxIdleConns(5)
+		sqldb.SetMaxOpenConns(10)
+	}
 	godb.Clauses(dbresolver.Write).AutoMigrate(
 		&Document{},
 	)
@@ -56,12 +62,17 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	// add resolver connections
 	if len(readonly)+len(readwrite) > 1 {
 		logger.Sugar().Debugf("Enabling database resolver for read/write splitting. Sources: %d, Replicas: %d", len(readwrite), len(readonly))
-		err = godb.Use(dbresolver.Register(dbresolver.Config{
-			Sources:           readwrite,
-			Replicas:          readonly,
-			Policy:            dbresolver.StrictRoundRobinPolicy(),
-			TraceResolverMode: true,
-		}))
+		err = godb.Use(
+			dbresolver.Register(dbresolver.Config{
+				Sources:           readwrite,
+				Replicas:          readonly,
+				Policy:            dbresolver.StrictRoundRobinPolicy(),
+				TraceResolverMode: true,
+			}).
+				SetConnMaxIdleTime(5 * time.Minute).
+				SetConnMaxLifetime(time.Hour).
+				SetMaxIdleConns(5).
+				SetMaxOpenConns(10))
 		if err != nil {
 			logger.Sugar().Errorf("failed to register database resolver: %v", err)
 			return nil, err

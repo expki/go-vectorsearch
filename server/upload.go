@@ -16,11 +16,14 @@ import (
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
 )
 
 type UploadRequest struct {
+	Owner     string `json:"owner"`
+	Category  string `json:"category"`
 	Prefix    string `json:"prefix,omitempty"`
 	Documents []any  `json:"documents"`
 }
@@ -66,83 +69,30 @@ func (s *server) UploadHttp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Flatten each file and apply prefix
-	logger.Sugar().Debugf("%d flattening files", txid)
-	flattenedFiles := make([]string, len(req.Documents))
-	information := make([]string, len(req.Documents))
-	for idx, file := range req.Documents {
-		info := Flatten(file)
-		flattenedFiles[idx] = info
-		if req.Prefix != "" {
-			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
-		}
-		information[idx] = fmt.Sprintf("search_document: %s", info)
-	}
-
-	// Get embeddings
-	logger.Sugar().Debugf("%d request embeddings from ollama", txid)
-	embedRes, err := s.ai.Embed(r.Context(), ai.EmbedRequest{
-		Model: s.config.Ollama.Embed,
-		Input: information,
-	})
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			logger.Sugar().Debugf("%d request canceled after %dms while embedding", txid, time.Since(start).Milliseconds())
-			w.WriteHeader(499)
-			io.WriteString(w, `{"error":"Client canceled request during generating embedding"}`)
-			return
-		}
-		logger.Sugar().Errorf("%d ai embed failed: %v", txid, err)
+	// Handle the upload request
+	res, err := s.Upload(r.Context(), req)
+	if err == nil {
+		// upload was successful
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		// upload request canceled
+		logger.Sugar().Warnf("%d upload request canceled after %s", txid, time.Since(start).String())
+		w.WriteHeader(499)
+		io.WriteString(w, `{"error":"Client canceled upload request"}`)
+		return
+	} else {
+		// upload failed
+		logger.Sugar().Errorf("%d upload request failed: %s", txid, err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, `{"error":"Embedding failed"}`)
+		io.WriteString(w, `{"error":"Upload request failed"}`)
 		return
 	}
 
-	// Save embeddings and documents
-	logger.Sugar().Debugf("%d saving documents to database", txid)
-	documents := make([]database.Document, len(embedRes.Embeddings))
-	for idx, embedding := range embedRes.Embeddings.Underlying() {
-		file, _ := json.Marshal(req.Documents[idx])
-		embedding := database.Document{
-			Vector:   embedding,
-			Prefix:   req.Prefix,
-			Document: file,
-			Hash:     strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
-		}
-		documents[idx] = embedding
-	}
-	result := s.db.Clauses(
-		dbresolver.Write,
-		clause.OnConflict{
-			Columns:   []clause.Column{{Name: "hash"}},
-			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
-		},
-	).WithContext(r.Context()).Create(&documents)
-	if result.Error != nil {
-		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			logger.Sugar().Debugf("%d request canceled after %dms while saving", txid, time.Since(start).Milliseconds())
-			w.WriteHeader(499)
-			io.WriteString(w, `{"error":"Client canceled request during record document"}`)
-			return
-		}
-		logger.Sugar().Errorf("%d database record failed: %v", txid, result.Error)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, `{"error":"Record failed"}`)
-		return
-	}
-
-	// Create response
-	res := UploadResponse{
-		DocumentIDs: make([]uint64, len(documents)),
-	}
-	for idx, embedding := range documents {
-		res.DocumentIDs[idx] = embedding.ID
-	}
+	// Marshal the response to JSON
 	resBytes, err := json.Marshal(res)
-	if result.Error != nil {
+	if err != nil {
 		logger.Sugar().Errorf("%d database response marshal failed: %v", txid, err)
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, `{"error":"Response failed"}`)
+		io.WriteString(w, `{"error":"Creating response failed"}`)
 		return
 	}
 
@@ -178,31 +128,87 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
 
-	// Save embeddings and documents
+	// Create database transation
+	tx := s.db.Begin().Clauses(dbresolver.Write)
+
+	// Get Owner
+	owner := database.Owner{Name: req.Owner}
+	result := tx.WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
+	if result.Error == nil {
+		// owner found
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// owner request canceled
+		tx.Rollback()
+		return res, result.Error
+	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// owner create
+		result = tx.WithContext(ctx).Create(&owner)
+		if result.Error != nil {
+			tx.Rollback()
+			return res, errors.Join(errors.New("failed to create owner"), result.Error)
+		}
+	} else {
+		// owner retrieve error
+		tx.Rollback()
+		return res, errors.Join(errors.New("failed to get owner"), result.Error)
+	}
+
+	// Get Category
+	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
+	result = tx.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
+	if result.Error == nil {
+		// category found
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// category request canceled
+		tx.Rollback()
+		return res, result.Error
+	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// category create
+		result = tx.WithContext(ctx).Create(&category)
+		if result.Error != nil {
+			tx.Rollback()
+			return res, errors.Join(errors.New("failed to create category"), result.Error)
+		}
+	} else {
+		// category retrieve error
+		tx.Rollback()
+		return res, errors.Join(errors.New("failed to get category"), result.Error)
+	}
+
+	// Save Documents
 	documents := make([]database.Document, len(embedRes.Embeddings))
 	for idx, embedding := range embedRes.Embeddings.Underlying() {
 		file, _ := json.Marshal(req.Documents[idx])
 		embedding := database.Document{
-			Vector:   embedding,
-			Prefix:   req.Prefix,
-			Document: file,
-			Hash:     strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
+			Vector:     embedding,
+			Prefix:     req.Prefix,
+			Document:   file,
+			Hash:       strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
+			CategoryID: category.ID,
+			Category:   category,
 		}
 		documents[idx] = embedding
 	}
-	result := s.db.Clauses(
-		dbresolver.Write,
+	result = tx.Clauses(
 		clause.OnConflict{
-			Columns:   []clause.Column{{Name: "hash"}},
+			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
 		},
 	).WithContext(ctx).Create(&documents)
-	if result.Error != nil {
-		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			return res, result.Error
-		}
-		return res, errors.Join(errors.New("failed to save document"), result.Error)
+	if result.Error == nil {
+		// documents created
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// documents request canceled
+		tx.Rollback()
+		return res, result.Error
+	} else {
+		// documents save error
+		tx.Rollback()
+		return res, errors.Join(errors.New("failed to save documents"), result.Error)
 	}
+
+	// Commit transation
+	tx.Commit()
 
 	// Create response
 	res.DocumentIDs = make([]uint64, len(documents))

@@ -54,7 +54,7 @@ func (c *Cache) Count() uint64 {
 	return total
 }
 
-func (c *Cache) CentroidReaders(ctx context.Context, target []uint8, centroidCount int) (total uint64, readers []func() (id uint64, vector []uint8), done func()) {
+func (c *Cache) CentroidReaders(ctx context.Context, category uint64, target []uint8, centroidCount int) (total uint64, readers []func() (id uint64, vector []uint8), done func()) {
 	c.lock.RLock()
 	topk := min(centroidCount, len(c.centroids))
 	readers = make([]func() (uint64, []uint8), topk)

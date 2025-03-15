@@ -13,7 +13,11 @@ type Document struct {
 	UpdatedAt time.Time     `gorm:"autoUpdateTime;index;not null"`
 	Prefix    string        `gorm:"not null"`
 	Document  DocumentField `gorm:"not null"`
-	Hash      string        `gorm:"uniqueIndex;not null"`
+	Hash      string        `gorm:"index:uq_document_hash,unique;not null"`
+
+	// Parent
+	CategoryID uint64   `gorm:"index:uq_document_hash,unique;not null"`
+	Category   Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 func (m *Document) BeforeCreate(tx *gorm.DB) error {
@@ -24,4 +28,24 @@ func (m *Document) BeforeCreate(tx *gorm.DB) error {
 func (m *Document) BeforeUpdate(tx *gorm.DB) error {
 	m.UpdatedAt = time.Now().UTC()
 	return nil
+}
+
+type Category struct {
+	ID   uint64 `gorm:"primarykey"`
+	Name string `gorm:"index:uq_category_name,unique;not null"`
+
+	// Parent
+	OwnerID uint64 `gorm:"index:uq_category_name,unique;not null"`
+	Owner   Owner  `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+
+	// Children
+	Documents []Document `gorm:"foreignKey:CategoryID"`
+}
+
+type Owner struct {
+	ID   uint64 `gorm:"primarykey"`
+	Name string `gorm:"uniqueIndex;not null"`
+
+	// Children
+	Categories []Category `gorm:"foreignKey:OwnerID"`
 }
