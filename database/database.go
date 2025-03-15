@@ -56,6 +56,8 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 		sqldb.SetMaxOpenConns(10)
 	}
 	godb.Clauses(dbresolver.Write).AutoMigrate(
+		&Owner{},
+		&Category{},
 		&Document{},
 	)
 

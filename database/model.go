@@ -13,10 +13,10 @@ type Document struct {
 	UpdatedAt time.Time     `gorm:"autoUpdateTime;index;not null"`
 	Prefix    string        `gorm:"not null"`
 	Document  DocumentField `gorm:"not null"`
-	Hash      string        `gorm:"index:uq_document_hash,unique;not null"`
+	Hash      string        `gorm:"uniqueIndex:uq_document_hash;not null"`
 
 	// Parent
-	CategoryID uint64   `gorm:"index:uq_document_hash,unique;not null"`
+	CategoryID uint64   `gorm:"uniqueIndex:uq_document_hash;index:idx_document_category;not null"`
 	Category   Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
@@ -39,7 +39,7 @@ type Category struct {
 	Owner   Owner  `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 
 	// Children
-	Documents []Document `gorm:"foreignKey:CategoryID"`
+	Documents []Document `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Owner struct {
@@ -47,5 +47,5 @@ type Owner struct {
 	Name string `gorm:"uniqueIndex;not null"`
 
 	// Children
-	Categories []Category `gorm:"foreignKey:OwnerID"`
+	Categories []Category `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
