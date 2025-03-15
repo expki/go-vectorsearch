@@ -124,7 +124,7 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 		DocumentID uint64
 		Similarity float32
 	}
-	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
+	mostSimilar := make([]item, req.Count+req.Offset+config.CACHE_TARGET_INDEX_SIZE)
 	cacheTotal, centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
 	barCache := progressbar.Default(int64(cacheTotal), "Searching cache...")
 	// read each matched centroid
