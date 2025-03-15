@@ -58,6 +58,7 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 	godb.Clauses(dbresolver.Write).AutoMigrate(
 		&Owner{},
 		&Category{},
+		&Centroid{},
 		&Document{},
 	)
 

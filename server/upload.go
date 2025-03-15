@@ -13,6 +13,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
@@ -104,6 +105,9 @@ func (s *server) UploadHttp(w http.ResponseWriter, r *http.Request) {
 
 // Upload calculates the embedding for the uploaded document then saves the document and embedding in the database.
 func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadResponse, err error) {
+	if len(req.Documents) == 0 {
+		return res, errors.New("no documents provided")
+	}
 	// Flatten each file and apply prefix
 	flattenedFiles := make([]string, len(req.Documents))
 	information := make([]string, len(req.Documents))
@@ -121,18 +125,25 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		Model: s.config.Ollama.Embed,
 		Input: information,
 	})
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return res, err
-		}
+	if err == nil {
+		// success
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		// request canceled
+		return res, err
+	} else {
+		// exception encountered
 		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
+	if len(embedRes.Embeddings) != len(req.Documents) {
+		return res, errors.New("invalid embeddings response")
+	}
+	matrixEmbeddings := embedRes.Embeddings.Underlying()
 
 	// Create database transation
 	tx := s.db.Begin().Clauses(dbresolver.Write)
 
 	// Get Owner
-	owner := database.Owner{Name: req.Owner}
+	var owner database.Owner
 	result := tx.WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
 		// owner found
@@ -142,6 +153,9 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, result.Error
 	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		// owner create
+		owner = database.Owner{
+			Name: req.Owner,
+		}
 		result = tx.WithContext(ctx).Create(&owner)
 		if result.Error != nil {
 			tx.Rollback()
@@ -154,7 +168,7 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 
 	// Get Category
-	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
+	var category database.Category
 	result = tx.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
 	if result.Error == nil {
 		// category found
@@ -164,6 +178,11 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, result.Error
 	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		// category create
+		category = database.Category{
+			Name:    req.Category,
+			OwnerID: owner.ID,
+			Owner:   owner,
+		}
 		result = tx.WithContext(ctx).Create(&category)
 		if result.Error != nil {
 			tx.Rollback()
@@ -175,23 +194,59 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, errors.Join(errors.New("failed to get category"), result.Error)
 	}
 
+	// Get Centroids
+	var centroids []database.Centroid
+	result = tx.WithContext(ctx).Where("category_id = ?", category.ID).Find(&centroids)
+	if result.Error == nil {
+		// centroids found
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// centroids request canceled
+		tx.Rollback()
+		return res, result.Error
+	} else {
+		// centroids retrieve error
+		tx.Rollback()
+		return res, errors.Join(errors.New("failed to get centroids"), result.Error)
+	}
+	if len(centroids) == 0 {
+		// centroid create
+		centroids = append(centroids, database.Centroid{
+			Vector:     matrixEmbeddings[0],
+			CategoryID: category.ID,
+			Category:   category,
+		})
+		result = tx.WithContext(ctx).Create(&centroids)
+		if result.Error != nil {
+			tx.Rollback()
+			return res, errors.Join(errors.New("failed to create initial centroid"), result.Error)
+		}
+	}
+
+	// Assign Documents to Centroids
+	matrixCentroids := make([][]uint8, len(centroids))
+	for idx, centroid := range centroids {
+		matrixCentroids[idx] = centroid.Vector
+	}
+	_, centroidIdxList := compute.NewMatrix(matrixCentroids).CosineSimilarity(compute.NewMatrix(matrixEmbeddings))
+
 	// Save Documents
 	documents := make([]database.Document, len(embedRes.Embeddings))
-	for idx, embedding := range embedRes.Embeddings.Underlying() {
+	for idx, embedding := range matrixEmbeddings {
+		centroid := centroids[centroidIdxList[idx]]
 		file, _ := json.Marshal(req.Documents[idx])
 		embedding := database.Document{
 			Vector:     embedding,
 			Prefix:     req.Prefix,
 			Document:   file,
 			Hash:       strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
-			CategoryID: category.ID,
-			Category:   category,
+			CentroidID: centroid.ID,
+			Centroid:   centroid,
 		}
 		documents[idx] = embedding
 	}
 	result = tx.Clauses(
 		clause.OnConflict{
-			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
+			Columns:   []clause.Column{{Name: "hash"}, {Name: "centroid_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
 		},
 	).WithContext(ctx).Create(&documents)

@@ -53,25 +53,6 @@ func subSlice[T any](list []T, max int) []T {
 
 type VectorField []uint8
 
-// Scan scan value into Vector, implements sql.Scanner interface
-func (v *VectorField) Scan(value any) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("failed to unmarshal Vector value: %v", value)
-	}
-	original, err := decompress(bytes)
-	if err != nil {
-		return fmt.Errorf("failed to decompress Vector value: %s", hex.EncodeToString(subSlice(bytes, 20)))
-	}
-	*v = VectorField(original)
-	return nil
-}
-
-// Value return Vector value, implement driver.Valuer interface
-func (v VectorField) Value() (driver.Value, error) {
-	return compress([]byte(v)), nil
-}
-
 func (e VectorField) Underlying() []uint8 {
 	out := make([]uint8, len(e))
 	for i, value := range e {

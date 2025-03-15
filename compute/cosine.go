@@ -47,14 +47,14 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	return cosineSim.Value().Data().([]float32)
 }
 
-// TODO: This function does not handle matrixes of different sizes
+// Calculate the cosine similarity between two matrices. The first matrix is the input matrix and the second matrix is the batch of vectors to compare against.
 func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, bestMatches []int) {
 	g := gorgonia.NewGraph()
 
 	// Create tensor nodes to hold M1 and M2 (rank=2)
-	M1 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix1.Dense.Clone()))
+	M1 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix1.Dense))
 
-	M2 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix2.Dense.Clone()))
+	M2 := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix2.Dense))
 
 	// Step 1: Dot Product => shape [N1, N2]
 	// M2^T: shape [dim, N2]
@@ -76,12 +76,12 @@ func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, 
 	if err != nil {
 		panic(err)
 	}
-	M2NormsRow, err := gorgonia.Reshape(M2Norms, tensor.Shape{1, matrix1.Shape[0]})
+	M2NormsRow, err := gorgonia.Reshape(M2Norms, tensor.Shape{1, matrix2.Shape[0]})
 	if err != nil {
 		panic(err)
 	}
 
-	normsProduct, err := gorgonia.BroadcastHadamardProd(M1NormsCol, M2NormsRow, nil, []byte{1})
+	normsProduct, err := gorgonia.BroadcastHadamardProd(M1NormsCol, M2NormsRow, []byte{1}, []byte{0})
 	if err != nil {
 		panic(err)
 	}

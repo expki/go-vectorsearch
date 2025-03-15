@@ -87,13 +87,6 @@ func main() {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
 
-	// Cache
-	logger.Sugar().Info("Refreshing cache...")
-	err = db.RefreshCache(appCtx)
-	if err != nil {
-		logger.Sugar().Fatalf("database.Cache: %v", err)
-	}
-
 	// Server
 	logger.Sugar().Info("Loading Server...")
 	srv := server.New(cfg, db, aiClient)

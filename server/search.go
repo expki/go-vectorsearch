@@ -19,7 +19,6 @@ import (
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
-	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )
@@ -40,9 +39,10 @@ type SearchResponse struct {
 }
 
 type DocumentSearchInfo struct {
-	DocumentID uint64  `json:"document_id"`
-	Similarity float32 `json:"similarity"`
-	Document   any     `json:"document,omitempty"`
+	DocumentID                 uint64  `json:"document_id"`
+	RelativeDocumentSimilarity float32 `json:"relative_document_similarity"`
+	RelativeCentroidSimilarity float32 `json:"relative_centroid_similarity"`
+	Document                   any     `json:"document,omitempty"`
 }
 
 func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
@@ -116,18 +116,14 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 
 // Search for a previously uploaded embedding vector in the database and return similar documents.
 func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchResponse, err error) {
-	if req.Count == 0 {
-		req.Count = 1
-	} else if req.Count > 20 {
-		req.Count = 20
-	}
+	req.Count = max(1, min(req.Count, 20))
 	if req.Centroids == 0 {
 		req.Centroids = 1
 	} else if req.Centroids < 0 {
 		req.Centroids = math.MaxInt
 	}
 
-	// Get embeddings
+	// Get embedding
 	if req.Prefix != "" {
 		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
 	}
@@ -135,10 +131,13 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		Model: s.config.Ollama.Embed,
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
 	})
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return res, err
-		}
+	if err == nil {
+		// success
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		// request canceled
+		return res, err
+	} else {
+		// exception encountered
 		return res, errors.Join(errors.New("failed to embed search query"), err)
 	}
 	if len(embedRes.Embeddings) < 1 {
@@ -148,7 +147,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get Owner
 	owner := database.Owner{Name: req.Owner}
-	result := s.db.WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
+	result := s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
 		// owner found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -164,7 +163,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get Category
 	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
-	result = s.db.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
 	if result.Error == nil {
 		// category found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -177,122 +176,120 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		// category retrieve error
 		return res, errors.Join(errors.New("failed to get category"), result.Error)
 	}
-	cache := s.db.Cache[category.ID]
 
-	// Scan embeddings from cache
-	type item struct {
-		DocumentID uint64
-		Similarity float32
+	// Get Centroids
+	var centroids []database.Centroid
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("category_id = ?", category.ID).Select("id", "vector").Find(&centroids)
+	if result.Error == nil {
+		// centroids found
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// centroids request canceled
+		return res, result.Error
+	} else {
+		// centroids retrieve error
+		return res, errors.Join(errors.New("failed to get centroids"), result.Error)
 	}
-	mostSimilar := make([]item, 0, req.Count+req.Offset+config.CACHE_TARGET_INDEX_SIZE)
-	cacheTotal, centroidReaderList, closeReaders := cache.CentroidReaders(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
-	barCache := progressbar.Default(int64(cacheTotal), "Searching cache...")
-	// read each matched centroid
-	for _, centroidReader := range centroidReaderList {
-		// read centroid vectors in batches
-		for {
-			// read matrix batch
-			idList, matrix := database.ReadCentroidBatch(centroidReader, config.CACHE_TARGET_INDEX_SIZE)
-			if len(idList) == 0 {
-				break
+	if len(centroids) == 0 {
+		return res, nil
+	}
+
+	// Find closest centroids to embedding
+	matrixCentroids := make([][]uint8, len(centroids))
+	for idx, centroid := range centroids {
+		matrixCentroids[idx] = centroid.Vector.Underlying()
+	}
+	type centroidSimilarity struct {
+		centroid   database.Centroid
+		similarity float32
+	}
+	closestCentroids := make([]centroidSimilarity, len(matrixCentroids))
+	for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrixCentroids)) {
+		closestCentroids[idx] = centroidSimilarity{
+			centroid:   centroids[idx],
+			similarity: similarity,
+		}
+	}
+	slices.SortFunc(closestCentroids, func(a, b centroidSimilarity) int {
+		return cmp.Compare(b.similarity, a.similarity)
+	})
+	closestCentroids = closestCentroids[:min(req.Centroids, len(closestCentroids))]
+
+	// For each centroid, find the closest documents to the embedding
+	type documentSimilarity struct {
+		centroidSimilarity *centroidSimilarity
+
+		document   database.Document
+		similarity float32
+	}
+	closestDocuments := make([]documentSimilarity, 0, req.Count+req.Offset+config.BATCH_SIZE_DATABASE)
+	for _, centroid := range closestCentroids[:req.Centroids] {
+		// Find centroid documents in batches
+		var documents []database.Document
+		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("centroid_id = ?", centroid.centroid.ID).Select("vector", "id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+			// Find closest documents to the embedding
+			matrixDocuments := make([][]uint8, len(documents))
+			for idx, document := range documents {
+				matrixDocuments[idx] = document.Vector
 			}
-
-			// compute cosine similarity between target and matrix batch
-			similarityList := target.CosineSimilarity(compute.NewMatrix(matrix))
-
-			// append document similarity to output list
-			for idx, id := range idList {
-				mostSimilar = append(mostSimilar, item{
-					DocumentID: id,
-					Similarity: similarityList[idx],
+			for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrixDocuments)) {
+				closestDocuments = append(closestDocuments, documentSimilarity{
+					centroidSimilarity: &centroid,
+					document:           documents[idx],
+					similarity:         similarity,
 				})
 			}
-
-			// sort list by most similar
-			slices.SortFunc(mostSimilar, func(a, b item) int {
-				return cmp.Compare(a.Similarity, b.Similarity)
+			slices.SortFunc(closestDocuments, func(a, b documentSimilarity) int {
+				return cmp.Compare(b.similarity, a.similarity)
 			})
+			closestDocuments = closestDocuments[:min(req.Count+req.Offset, uint(len(closestDocuments)))]
+			return nil
+		})
+		if result.Error == nil {
+			// success
+		} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			// request canceled
+			return res, result.Error
+		} else {
+			// exception encountered
+			return res, errors.Join(errors.New("database document batch retrieval failed"), result.Error)
+		}
+	}
 
-			// truncate list to requested count + offset
-			mostSimilar = mostSimilar[:req.Count+req.Offset]
-			barCache.Add(len(idList))
-
-			// stop if target size could not be read
-			if len(idList) < config.CACHE_TARGET_INDEX_SIZE {
-				break
+	// Fetch closest documents data
+	if !req.NoDocuments {
+		ids := make([]uint64, len(closestDocuments))
+		for idx, item := range closestDocuments {
+			ids[idx] = item.document.ID
+		}
+		var documents []database.Document
+		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "document").Find(&documents, ids)
+		if result.Error == nil {
+			// success
+		} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+			// request canceled
+			return res, result.Error
+		} else {
+			// exception encountered
+			return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
+		}
+		for _, document := range documents {
+			for idx, item := range closestDocuments {
+				if item.document.ID == document.ID {
+					closestDocuments[idx].document.Document = document.Document
+					break
+				}
 			}
 		}
-	}
-	closeReaders()
-	barCache.Finish()
-
-	// Scan embeddings from database
-	var total int64
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Model(&database.Document{}).Where("updated_at > ? AND category_id = ?", cache.LastUpdated(), category.ID).Count(&total)
-	if result.Error != nil {
-		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			return res, result.Error
-		}
-		return res, errors.Join(errors.New("counting total records failed"), result.Error)
-	}
-	barDatabase := progressbar.Default(total, "Searching database...")
-	var batch []database.Document
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("vector", "id").Where("updated_at > ?", cache.LastUpdated()).FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
-		matrix := make([][]uint8, len(batch))
-		for idx, result := range batch {
-			matrix[idx] = result.Vector.Underlying()
-		}
-		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
-			barDatabase.Add(1)
-			mostSimilar = append(mostSimilar, item{
-				DocumentID: batch[idx].ID,
-				Similarity: similarity,
-			})
-		}
-		slices.SortFunc(mostSimilar, func(a, b item) int {
-			return cmp.Compare(a.Similarity, b.Similarity)
-		})
-		mostSimilar = mostSimilar[:req.Count+req.Offset]
-		return nil
-	})
-	barDatabase.Finish()
-	if result.Error != nil && err != gorm.ErrRecordNotFound {
-		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			return res, result.Error
-		}
-		return res, errors.Join(errors.New("database vector retrieval failed"), result.Error)
-	}
-	slices.Reverse(mostSimilar)
-	mostSimilar = mostSimilar[req.Offset : req.Count+req.Offset]
-
-	// Fetch most similar documents
-	var documents []database.Document
-	ids := make([]uint64, 0, len(mostSimilar))
-	for _, item := range mostSimilar {
-		if item.DocumentID != 0 {
-			ids = append(ids, item.DocumentID)
-		}
-	}
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Find(&documents, ids)
-	if result.Error != nil {
-		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			return res, result.Error
-		}
-		return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
 	}
 
 	// Create response
 	res.Documents = make([]DocumentSearchInfo, req.Count)
-	for idx, item := range mostSimilar {
-		res.Documents[idx].DocumentID = item.DocumentID
-		res.Documents[idx].Similarity = item.Similarity
-		if !req.NoDocuments {
-			for _, doc := range documents {
-				if doc.ID == item.DocumentID {
-					res.Documents[idx].Document = doc.Document.JSON()
-					break
-				}
-			}
+	for idx, item := range closestDocuments {
+		res.Documents[idx] = DocumentSearchInfo{
+			DocumentID:                 item.document.ID,
+			RelativeDocumentSimilarity: item.similarity,
+			RelativeCentroidSimilarity: item.centroidSimilarity.similarity,
+			Document:                   item.document.Document.JSON(),
 		}
 	}
 
