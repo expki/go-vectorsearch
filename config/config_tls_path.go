@@ -55,7 +55,7 @@ func (t *ConfigTLSPath) reloadCertificate() error {
 func (t *ConfigTLSPath) loadCertificate() error {
 	// Generate new
 	if t.CertPath == "" || t.KeyPath == "" {
-		return errors.New("could not load certificate: cert_path or key_path is empty")
+		return nil
 	}
 
 	// Load Filesystem

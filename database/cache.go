@@ -54,7 +54,7 @@ func (c *Cache) Count() uint64 {
 	return total
 }
 
-func (c *Cache) CentroidReaders(ctx context.Context, target []uint8, centroidCount int) (readers []func() (id uint64, vector []uint8), done func()) {
+func (c *Cache) CentroidReaders(ctx context.Context, target []uint8, centroidCount int) (total uint64, readers []func() (id uint64, vector []uint8), done func()) {
 	c.lock.RLock()
 	topk := min(centroidCount, len(c.centroids))
 	readers = make([]func() (uint64, []uint8), topk)
@@ -62,9 +62,10 @@ func (c *Cache) CentroidReaders(ctx context.Context, target []uint8, centroidCou
 	matchedCentroidIndexes, _ := c.ivf.NearestCentroids(target, topk)
 	for idx, centroidIdx := range matchedCentroidIndexes {
 		centroid := c.centroids[centroidIdx]
+		total += centroid.count()
 		readers[idx], readerClosers[idx] = centroid.createReader(c.vectorSize)
 	}
-	return readers, func() {
+	return total, readers, func() {
 		for _, closer := range readerClosers {
 			closer()
 		}

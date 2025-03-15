@@ -120,13 +120,13 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Scan embeddings from cache
-	barCache := progressbar.Default(-1, "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
-	centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
+	cacheTotal, centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
+	barCache := progressbar.Default(int64(cacheTotal), "Searching cache...")
 	// read each matched centroid
 	for _, centroidReader := range centroidReaderList {
 		// read centroid vectors in batches
@@ -302,13 +302,13 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Scan embeddings from cache
-	barCache := progressbar.Default(-1, "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, 0, req.Count+req.Offset+config.CACHE_TARGET_INDEX_SIZE)
-	centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
+	cacheTotal, centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
+	barCache := progressbar.Default(int64(cacheTotal), "Searching cache...")
 	// read each matched centroid
 	for _, centroidReader := range centroidReaderList {
 		// read centroid vectors in batches
