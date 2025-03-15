@@ -13,7 +13,6 @@ import (
 	"time"
 
 	_ "github.com/expki/go-vectorsearch/env"
-	"github.com/expki/go-vectorsearch/noop"
 	"github.com/expki/go-vectorsearch/static"
 
 	"github.com/expki/go-vectorsearch/ai"
@@ -71,7 +70,7 @@ func main() {
 
 	// AI
 	logger.Sugar().Info("Loading AI...")
-	aiClient, err := noop.NewOllama(cfg.Ollama)
+	aiClient, err := ai.NewOllama(cfg.Ollama)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}

@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -33,58 +32,55 @@ func (c *Cache) LastUpdated() time.Time {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	if len(c.centroids) == 0 {
-		return time.Time{}
+	var newest time.Time
+	for _, centroid := range c.centroids {
+		if centroid.lastUpdated().After(newest) {
+			newest = centroid.lastUpdated()
+		}
 	}
 
-	return c.centroids[0].lastUpdated()
+	return newest
 }
 
 func (c *Cache) Count() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	if len(c.centroids) == 0 {
-		return 0
+	var total uint64
+	for _, centroid := range c.centroids {
+		total += centroid.count()
 	}
 
-	return c.centroids[0].count()
+	return total
 }
 
-func (c *Cache) ReadInBatches(ctx context.Context, target []uint8, centroidCount int) (stream <-chan *[][]uint8) {
+func (c *Cache) CentroidReaders(ctx context.Context, target []uint8, centroidCount int) (readers []func() (id uint64, vector []uint8), done func()) {
 	c.lock.RLock()
 	topk := min(centroidCount, len(c.centroids))
-
-	writeStream := make(chan *[][]uint8, topk+1)
-	go func() {
-		defer c.lock.RUnlock()
-		defer close(writeStream)
-		var wg sync.WaitGroup
-		if len(c.centroids) == 0 {
-			return
+	readers = make([]func() (uint64, []uint8), topk)
+	readerClosers := make([]func(), topk)
+	matchedCentroidIndexes, _ := c.ivf.NearestCentroids(target, topk)
+	for idx, centroidIdx := range matchedCentroidIndexes {
+		centroid := c.centroids[centroidIdx]
+		readers[idx], readerClosers[idx] = centroid.createReader(c.vectorSize)
+	}
+	return readers, func() {
+		for _, closer := range readerClosers {
+			closer()
 		}
-		matchedCentroidIndexes, _ := c.ivf.NearestCentroids(target, topk)
-		wg.Add(len(matchedCentroidIndexes))
-		for _, centroidIdx := range matchedCentroidIndexes {
-			go func() {
-				c.centroids[centroidIdx].readInBatches(ctx, c.vectorSize, writeStream)
-				wg.Done()
-			}()
-		}
-		wg.Wait()
-	}()
-	return writeStream
+		c.lock.RUnlock()
+	}
 }
 
 func (c *Cache) Close() {
 	c.lock.Lock()
-	defer c.lock.Unlock()
 	for _, centroid := range c.centroids {
 		centroid.lock.Lock()
-		defer centroid.lock.Unlock()
 		centroid.file.Close()
+		centroid.lock.Unlock()
 	}
 	c.centroids = nil
+	c.lock.Unlock()
 }
 
 func (db *Database) RefreshCache(ctx context.Context) error {
@@ -144,7 +140,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 
 	// Open index files and write streams
 	db.Cache.centroids = make([]*centroid, centroidFileCount)
-	rowWriterList := make([]func(row []uint8), centroidFileCount)
+	rowWriterList := make([]func(id uint64, vector []uint8), centroidFileCount)
 	rowWriterCloserList := make([]func(), centroidFileCount)
 	for idx := range centroidFileCount {
 		path := filepath.Join(db.Cache.path, fmt.Sprintf("centroid_%d.cache", idx))
@@ -157,7 +153,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 			Idx:  idx,
 			file: file,
 		}
-		rowWriterList[idx], rowWriterCloserList[idx] = db.Cache.centroids[idx].createRowWriter(db.Cache.vectorSize)
+		rowWriterList[idx], rowWriterCloserList[idx] = db.Cache.centroids[idx].createWriter(db.Cache.vectorSize)
 	}
 	defer func() {
 		for _, closer := range rowWriterCloserList {
@@ -183,10 +179,7 @@ func (db *Database) createIndexedCache(ctx context.Context, total int64) (err er
 		// write each row to assigned centroid file
 		for vectorIdx, centroidIdx := range assignments {
 			result := batch[vectorIdx]
-			row := make([]byte, 8+db.Cache.vectorSize)
-			binary.LittleEndian.PutUint64(row[:8], result.ID)
-			copy(row[8:], result.Vector)
-			rowWriterList[centroidIdx](row)
+			rowWriterList[centroidIdx](result.ID, result.Vector)
 		}
 
 		bar.Add(len(batch))

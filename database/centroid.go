@@ -2,7 +2,6 @@ package database
 
 import (
 	"bufio"
-	"context"
 	"encoding/binary"
 	"io"
 	"os"
@@ -22,7 +21,7 @@ type centroid struct {
 	file *os.File
 }
 
-func (c *centroid) createRowWriter(vectorDimensions int) (rowWriter func(row []uint8), done func()) {
+func (c *centroid) createWriter(vectorSize int) (rowWriter func(id uint64, vector []uint8), done func()) {
 	c.lock.Lock()
 
 	// move to start of file
@@ -51,30 +50,38 @@ func (c *centroid) createRowWriter(vectorDimensions int) (rowWriter func(row []u
 	}
 
 	// Buffer
-	encoderBuffer := bufio.NewWriterSize(encoder, (vectorDimensions+8)*config.BATCH_SIZE_DATABASE)
+	encoderBuffer := bufio.NewWriterSize(encoder, (8+vectorSize)*config.BATCH_SIZE_CACHE)
 
 	// Track total
 	var total uint64
 
-	return func(row []uint8) {
-			encoderBuffer.Write(row)
+	return func(id uint64, vector []uint8) {
+			idBytes := make([]byte, 8)
+			binary.LittleEndian.PutUint64(idBytes, id)
+			encoderBuffer.Write(idBytes) // write id
+			encoderBuffer.Write(vector)  // write vector
 			total++
 		}, func() {
+			// close the encoder
+			encoderBuffer.Flush()
+			encoder.Close()
+
 			// update total count
 			c.file.Seek(8, io.SeekStart)
 			writeTotal(c.file, total)
 
-			// close writing to file
-			encoderBuffer.Flush()
-			encoder.Close()
+			// unlock the file
 			c.file.Sync()
 			c.lock.Unlock()
 		}
 }
 
-func (c *centroid) readInBatches(ctx context.Context, vectorSize int, openStream chan<- *[][]uint8) {
+func (c *centroid) createReader(vectorSize int) (rowReader func() (id uint64, vector []uint8), done func()) {
+	total := c.count()
+	if total == 0 {
+		return func() (uint64, []uint8) { return 0, nil }, func() {}
+	}
 	c.lock.Lock()
-	defer c.lock.Unlock()
 
 	// move to start of file after date & count
 	c.file.Seek(16, io.SeekStart)
@@ -87,52 +94,30 @@ func (c *centroid) readInBatches(ctx context.Context, vectorSize int, openStream
 	if err != nil {
 		logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
 	}
-	decoderBuffer := bufio.NewReaderSize(decoder, (vectorSize+8)*config.BATCH_SIZE_CACHE)
+
+	// Buffer read
+	decoderBuffer := bufio.NewReaderSize(decoder, (8+vectorSize)*config.BATCH_SIZE_CACHE)
 
 	// read the data
-	for {
-		// stop if request is canceled
-		select {
-		case <-ctx.Done():
-			decoder.Close()
-			return
-		default:
-			// continue with read
-		}
-
-		// read batch
-		batch := make([][]uint8, 0, config.BATCH_SIZE_CACHE)
-		for range config.BATCH_SIZE_CACHE {
-			// read row
-			row := make([]uint8, vectorSize+8)
-			_, err := io.ReadFull(decoderBuffer, row)
-
-			// if error is EOF, return you are done
+	return func() (id uint64, vector []uint8) {
+			idBytes := make([]byte, 8)
+			_, err := io.ReadFull(decoderBuffer, idBytes)
 			if err == io.EOF {
-				decoder.Close()
-				return
+				return 0, nil
 			}
-
-			// if error is not nil, fatal
 			if err != nil {
-				decoder.Close()
-				logger.Sugar().Errorf("Failed to read row from zstd cache decoder: %v", err)
-				return
+				logger.Sugar().Fatalf("Failed to read full id from zstd cache decoder: %v", err)
 			}
-
-			// add row to batchs
-			batch = append(batch, row)
-		}
-
-		// if batch is empty, stop
-		if len(batch) == 0 {
+			vector = make([]uint8, vectorSize)
+			_, err = io.ReadFull(decoderBuffer, vector)
+			if err != nil {
+				logger.Sugar().Fatalf("Failed to read full vector from zstd cache decoder: %v", err)
+			}
+			return binary.LittleEndian.Uint64(idBytes), vector
+		}, func() {
 			decoder.Close()
-			return
+			c.lock.Unlock()
 		}
-
-		// send batch
-		openStream <- &batch
-	}
 }
 
 func (c *centroid) lastUpdated() time.Time {
@@ -188,4 +173,18 @@ func writeTotal(file *os.File, count uint64) {
 	totalBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(totalBytes, count)
 	file.Write(totalBytes)
+}
+
+func ReadCentroidBatch(rowReader func() (id uint64, vector []uint8), size int) (ids []uint64, matrix [][]uint8) {
+	ids = make([]uint64, size)
+	matrix = make([][]uint8, size)
+	for idx := range size {
+		id, vector := rowReader()
+		if vector == nil {
+			return ids[:idx], matrix[:idx]
+		}
+		ids[idx] = id
+		matrix[idx] = vector
+	}
+	return ids, matrix
 }

@@ -3,7 +3,6 @@ package server
 import (
 	"cmp"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,31 +120,50 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Scan embeddings from cache
-	barCache := progressbar.Default(int64(s.db.Cache.Count()), "Searching cache...")
+	barCache := progressbar.Default(-1, "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
 	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
-	cacheStream := s.db.Cache.ReadInBatches(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
-	for matrixPointer := range cacheStream {
-		matrixFull := *matrixPointer
-		matrix := make([][]uint8, len(matrixFull))
-		for idx, row := range matrixFull {
-			matrix[idx] = row[8:]
-		}
-		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
-			barCache.Add(1)
-			mostSimilar = append(mostSimilar, item{
-				DocumentID: binary.LittleEndian.Uint64(matrixFull[idx][:8]),
-				Similarity: similarity,
+	centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(r.Context(), embedRes.Embeddings.Underlying()[0], req.Centroids)
+	// read each matched centroid
+	for _, centroidReader := range centroidReaderList {
+		// read centroid vectors in batches
+		for {
+			// read matrix batch
+			idList, matrix := database.ReadCentroidBatch(centroidReader, config.CACHE_TARGET_INDEX_SIZE)
+			if len(idList) == 0 {
+				break
+			}
+
+			// compute cosine similarity between target and matrix batch
+			similarityList := target.CosineSimilarity(compute.NewMatrix(matrix))
+
+			// append document similarity to output list
+			for idx, id := range idList {
+				mostSimilar = append(mostSimilar, item{
+					DocumentID: id,
+					Similarity: similarityList[idx],
+				})
+			}
+
+			// sort list by most similar
+			slices.SortFunc(mostSimilar, func(a, b item) int {
+				return cmp.Compare(a.Similarity, b.Similarity)
 			})
+
+			// truncate list to requested count + offset
+			mostSimilar = mostSimilar[:req.Count+req.Offset]
+			barCache.Add(len(idList))
+
+			// stop if target size could not be read
+			if len(idList) < config.CACHE_TARGET_INDEX_SIZE {
+				break
+			}
 		}
-		slices.SortFunc(mostSimilar, func(a, b item) int {
-			return cmp.Compare(a.Similarity, b.Similarity)
-		})
-		mostSimilar = mostSimilar[:req.Count+req.Offset]
 	}
+	closeReaders()
 	barCache.Finish()
 
 	// Scan embeddings from database
@@ -284,31 +302,50 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Scan embeddings from cache
-	barCache := progressbar.Default(int64(s.db.Cache.Count()), "Searching cache...")
+	barCache := progressbar.Default(-1, "Searching cache...")
 	type item struct {
 		DocumentID uint64
 		Similarity float32
 	}
-	mostSimilar := make([]item, req.Count+req.Offset+max(config.BATCH_SIZE_CACHE, config.BATCH_SIZE_DATABASE))
-	cacheStream := s.db.Cache.ReadInBatches(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
-	for matrixPointer := range cacheStream {
-		matrixFull := *matrixPointer
-		matrix := make([][]uint8, len(matrixFull))
-		for idx, row := range matrixFull {
-			matrix[idx] = row[8:]
-		}
-		for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrix)) {
-			barCache.Add(1)
-			mostSimilar = append(mostSimilar, item{
-				DocumentID: binary.LittleEndian.Uint64(matrixFull[idx][:8]),
-				Similarity: similarity,
+	mostSimilar := make([]item, 0, req.Count+req.Offset+config.CACHE_TARGET_INDEX_SIZE)
+	centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
+	// read each matched centroid
+	for _, centroidReader := range centroidReaderList {
+		// read centroid vectors in batches
+		for {
+			// read matrix batch
+			idList, matrix := database.ReadCentroidBatch(centroidReader, config.CACHE_TARGET_INDEX_SIZE)
+			if len(idList) == 0 {
+				break
+			}
+
+			// compute cosine similarity between target and matrix batch
+			similarityList := target.CosineSimilarity(compute.NewMatrix(matrix))
+
+			// append document similarity to output list
+			for idx, id := range idList {
+				mostSimilar = append(mostSimilar, item{
+					DocumentID: id,
+					Similarity: similarityList[idx],
+				})
+			}
+
+			// sort list by most similar
+			slices.SortFunc(mostSimilar, func(a, b item) int {
+				return cmp.Compare(a.Similarity, b.Similarity)
 			})
+
+			// truncate list to requested count + offset
+			mostSimilar = mostSimilar[:req.Count+req.Offset]
+			barCache.Add(len(idList))
+
+			// stop if target size could not be read
+			if len(idList) < config.CACHE_TARGET_INDEX_SIZE {
+				break
+			}
 		}
-		slices.SortFunc(mostSimilar, func(a, b item) int {
-			return cmp.Compare(a.Similarity, b.Similarity)
-		})
-		mostSimilar = mostSimilar[:req.Count+req.Offset]
 	}
+	closeReaders()
 	barCache.Finish()
 
 	// Scan embeddings from database

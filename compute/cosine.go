@@ -14,7 +14,7 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 	inputNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(vector.Dense.Clone()))
 
 	// Batch matrix
-	batchNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix.Dense.Clone()))
+	batchNode := gorgonia.NewTensor(g, tensor.Float32, 2, gorgonia.WithValue(matrix.Dense))
 
 	// Compute norms
 	inputSquared := gorgonia.Must(gorgonia.Square(inputNode))
