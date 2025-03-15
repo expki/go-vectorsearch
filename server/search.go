@@ -164,7 +164,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get Category
 	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
-	result = s.db.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
+	result = s.db.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
 	if result.Error == nil {
 		// category found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -177,6 +177,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		// category retrieve error
 		return res, errors.Join(errors.New("failed to get category"), result.Error)
 	}
+	cache := s.db.Cache[category.ID]
 
 	// Scan embeddings from cache
 	type item struct {
@@ -184,7 +185,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		Similarity float32
 	}
 	mostSimilar := make([]item, 0, req.Count+req.Offset+config.CACHE_TARGET_INDEX_SIZE)
-	cacheTotal, centroidReaderList, closeReaders := s.db.Cache.CentroidReaders(ctx, category.ID, embedRes.Embeddings.Underlying()[0], req.Centroids)
+	cacheTotal, centroidReaderList, closeReaders := cache.CentroidReaders(ctx, embedRes.Embeddings.Underlying()[0], req.Centroids)
 	barCache := progressbar.Default(int64(cacheTotal), "Searching cache...")
 	// read each matched centroid
 	for _, centroidReader := range centroidReaderList {
@@ -227,7 +228,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Scan embeddings from database
 	var total int64
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Model(&database.Document{}).Where("updated_at > ? AND category_id = ?", s.db.Cache.LastUpdated(), category.ID).Count(&total)
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Model(&database.Document{}).Where("updated_at > ? AND category_id = ?", cache.LastUpdated(), category.ID).Count(&total)
 	if result.Error != nil {
 		if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 			return res, result.Error
@@ -236,7 +237,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 	barDatabase := progressbar.Default(total, "Searching database...")
 	var batch []database.Document
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("vector", "id").Where("updated_at > ?", s.db.Cache.LastUpdated()).FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("vector", "id").Where("updated_at > ?", cache.LastUpdated()).FindInBatches(&batch, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 		matrix := make([][]uint8, len(batch))
 		for idx, result := range batch {
 			matrix[idx] = result.Vector.Underlying()

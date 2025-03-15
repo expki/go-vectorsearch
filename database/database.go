@@ -4,10 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
@@ -19,8 +16,11 @@ import (
 )
 
 type Database struct {
+	cfg config.Config
+
 	*gorm.DB
-	Cache Cache
+	CacheLock sync.RWMutex
+	Cache     map[uint64]*Cache
 }
 
 func New(cfg config.Config, vectorSize int) (db *Database, err error) {
@@ -78,7 +78,7 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 			return nil, err
 		}
 	}
-	db = &Database{DB: godb, Cache: Cache{path: cfg.Cache, vectorSize: vectorSize}}
+	db = &Database{cfg: cfg, DB: godb, Cache: make(map[uint64]*Cache)}
 
 	// create cache dir
 	if _, err := os.Stat(cfg.Cache); os.IsNotExist(err) {
@@ -88,44 +88,6 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 			return nil, err
 		}
 	}
-
-	// open cache
-	files, err := os.ReadDir(cfg.Cache)
-	if err != nil {
-		logger.Sugar().Errorf("failed to read cache dir %q: %v", cfg.Cache, err)
-		return nil, err
-	}
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		info, err := file.Info()
-		if err != nil {
-			logger.Sugar().Errorf("failed to get file info for %q: %v", file.Name(), err)
-			continue
-		}
-		if !strings.HasPrefix(info.Name(), "centroid_") || !strings.HasPrefix(info.Name(), ".cache") {
-			continue
-		}
-		indexString, _ := strings.CutPrefix(info.Name(), "centroid_")
-		indexString, _ = strings.CutSuffix(indexString, ".cache")
-		index, err := strconv.Atoi(indexString)
-		if err != nil {
-			logger.Sugar().Errorf("failed to parse index from file name %q: %v", info.Name(), err)
-			continue
-		}
-		filePath := filepath.Join(cfg.Cache, file.Name())
-		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-		if err != nil {
-			logger.Sugar().Errorf("failed to open cache file %q: %v", filePath, err)
-			return nil, err
-		}
-		centroid := &centroid{Idx: index, file: file}
-		db.Cache.centroids = append(db.Cache.centroids, centroid)
-	}
-	sort.Slice(db.Cache.centroids, func(i, j int) bool {
-		return db.Cache.centroids[i].Idx < db.Cache.centroids[j].Idx // ascending order
-	})
 
 	return db, nil
 }
@@ -141,6 +103,8 @@ func (d *Database) Close() error {
 		logger.Sugar().Errorf("failed to close database connection: %v", err)
 		return err
 	}
-	d.Cache.Close()
+	for _, cache := range d.Cache {
+		cache.Close()
+	}
 	return nil
 }

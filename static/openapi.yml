@@ -161,6 +161,12 @@ components:
       type: object
       required: ["documents"]
       properties:
+        owner:
+          type: string
+          description: Owner of document
+        category:
+          type: string
+          description: Category of the document
         prefix:
           type: string
           description: Add an optional prefix to the document
@@ -187,6 +193,12 @@ components:
       type: object
       required: ["text", "count"]
       properties:
+        owner:
+          type: string
+          description: Owner of document
+        category:
+          type: string
+          description: Category of the document
         prefix:
           type: string
           description: Add an optional prefix to the search query
@@ -233,6 +245,12 @@ components:
       type: object
       required: ["text"]
       properties:
+        owner:
+          type: string
+          description: Owner of document ids
+        category:
+          type: string
+          description: Category of the document ids
         prefix:
           type: string
           description: Add an optional prefix to the chat request.
