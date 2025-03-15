@@ -1,4 +1,5 @@
 build/
 cache/
-config.json
-vectors.db
+*.json
+*.db
+*.prof
