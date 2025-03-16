@@ -237,6 +237,8 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			Hash:        strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
 			CentroidID:  centroid.ID,
 			Centroid:    centroid,
+			CategoryID:  category.ID,
+			Category:    category,
 			LastUpdated: time.Now(),
 		}
 		documents[idx] = embedding
@@ -244,7 +246,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Clauses(
 		clause.OnConflict{
 			Columns:   []clause.Column{{Name: "hash"}, {Name: "centroid_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"last_updated", "prefix", "vector"}),
+			DoUpdates: clause.AssignmentColumns([]string{"last_updated", "prefix", "vector", "external_id"}),
 		},
 	).Create(&documents)
 	if result.Error == nil {

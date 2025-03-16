@@ -16,8 +16,10 @@ type Document struct {
 	Hash        string        `gorm:"uniqueIndex:uq_document_hash;not null"`
 
 	// Parent
-	CentroidID uint64   `gorm:"uniqueIndex:uq_document_hash;index:idx_document_centroid;not null"`
+	CentroidID uint64   `gorm:"index:idx_document_centroid;not null"`
 	Centroid   Centroid `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	CategoryID uint64   `gorm:"uniqueIndex:uq_document_hash;not null"`
+	Category   Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Centroid struct {
@@ -42,7 +44,8 @@ type Category struct {
 	Owner   Owner  `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 
 	// Children
-	Centroid []Centroid `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Centroids []Centroid `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Documents []Document `gorm:"foreignKey:DocumentID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Owner struct {
