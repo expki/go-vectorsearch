@@ -1,8 +1,7 @@
 openapi: 3.0.3
 info:
   title: API
-  description: |-
-    Local AI
+  description: Local AI
   version: 1.0.0
 tags:
   - name: documents
@@ -13,7 +12,7 @@ paths:
       tags:
         - documents
       summary: Uploads a document for embedding search
-      description: |-
+      description: |
         document → formatted → embedding → database
       operationId: upload
       requestBody:
@@ -36,30 +35,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Invalid request"
         '405':
           description: Invalid method
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Invalid request method"
         '500':
           description: Server exception
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Internal exception"
+
   /api/search:
     post:
       tags:
         - documents
-      summary: Search for an document embedded
-      description: |-
+      summary: Search for an embedded document
+      description: |
         query → embedding → database → document
       operationId: search
       requestBody:
@@ -82,30 +76,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Invalid request"
         '405':
           description: Invalid method
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Invalid request method"
         '500':
           description: Server exception
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "Internal exception"
+
   /api/chat:
     post:
       tags:
         - documents
       summary: Chat about a document
-      description: |-
+      description: |
         query → database → document → chat
       operationId: chat
       requestBody:
@@ -122,32 +111,25 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: |
-                The document is written in English
         '400':
           description: Invalid input
           content:
             text/plain:
               schema:
                 type: string
-              example: |
-                Invalid request
         '405':
           description: Invalid method
           content:
             text/plain:
               schema:
                 type: string
-              example: |
-                Invalid request method
         '500':
           description: Server exception
           content:
             text/plain:
               schema:
                 type: string
-              example: |
-                Internal exception
+
 components:
   schemas:
     ErrorResponse:
@@ -157,6 +139,7 @@ components:
           type: string
           description: A description of the exception encountered
           example: "Invalid request"
+
     UploadRequest:
       type: object
       required: ["documents"]
@@ -174,16 +157,22 @@ components:
         documents:
           type: array
           items:
-            object:
-             external_id:
-               type: string
-             document:
-               anyOf:
-                - type: string
-                - type: array
-                - type: object
+            type: object
+            properties:
+              external_id:
+                type: string
+              document:
+                anyOf:
+                  - type: string
+                  - type: array
+                  - type: object
           description: The documents to embed
-      example: {"documents": [{"document": "Once upon a time"}, {"document": ["In a galaxy far, far away"]}, {"document": {"story": "The Force Awakens"}}]}
+      example:
+        documents:
+          - document: "Once upon a time"
+          - document: ["In a galaxy far, far away"]
+          - document: { "story": "The Force Awakens" }
+
     UploadResponse:
       type: object
       properties:
@@ -191,8 +180,9 @@ components:
           type: array
           description: A list of IDs for the uploaded documents
           items:
-           type: integer
+            type: integer
           example: [1, 2, 3]
+
     SearchRequest:
       type: object
       required: ["text", "count"]
@@ -220,8 +210,11 @@ components:
           description: Flag to indicate whether to include documents in the response
         centroids:
           type: integer
-          description: Number of indicies to scan
-      example: {"text": "Once upon a time", "count": 2}
+          description: Number of indices to scan
+      example:
+        text: "Once upon a time"
+        count: 2
+
     SearchResponse:
       type: object
       properties:
@@ -233,29 +226,26 @@ components:
             properties:
               document_id:
                 type: integer
-                description: The ID of the similar document
               external_id:
                 type: string
-                description: The ID of the external document
               relative_document_similarity:
                 type: number
                 format: float
-                description: The similarity score of the document compared to other documents in centroid
               relative_centroid_similarity:
                 type: number
                 format: float
-                description: The similarity score of the centroid compared to other centroids
-              record:
-                document:
-                  anyOf:
+              document:
+                anyOf:
                   - type: string
                   - type: array
                   - type: object
-                  description: The actual content of the similar document, if included in the request.
-                external_id:
-                 type: string
-                  description: The ID of the external document
-          example: [{"document_id": 1, "relative_document_similarity": 0.70, "relative_document_similarity": 0.70, "document": "Once upon a time"}]
+          example:
+            - document_id: 1
+              external_id: "abc123"
+              relative_document_similarity: 0.70
+              relative_centroid_similarity: 0.80
+              document: "Once upon a time"
+
     ChatRequest:
       type: object
       required: ["text"]
@@ -291,5 +281,6 @@ components:
           items:
             type: object
           description: A list of documents to include as context for the chat request.
-          example: [{"story": "Once upon a time"}, {"another_story": "In another world"}]
-
+          example:
+            - story: "Once upon a time"
+            - another_story: "In another world"
