@@ -47,7 +47,7 @@ func (d *Database) refreshCentroidJob(appCtx context.Context) {
 func (d *Database) splitCentroidJob(appCtx context.Context) {
 	logger.Sugar().Info("Splitting Centroids started")
 	var centroids []Centroid
-	tx := d.WithContext(appCtx).Begin().Clauses(dbresolver.Write)
+	tx := d.WithContext(appCtx).Clauses(dbresolver.Write).Begin()
 	result := tx.Clauses(
 		clause.Locking{
 			Strength: "SHARE",
