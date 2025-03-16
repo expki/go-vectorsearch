@@ -23,10 +23,15 @@ import (
 )
 
 type UploadRequest struct {
-	Owner     string `json:"owner"`
-	Category  string `json:"category"`
-	Prefix    string `json:"prefix,omitempty"`
-	Documents []any  `json:"documents"`
+	Owner     string           `json:"owner"`
+	Category  string           `json:"category"`
+	Prefix    string           `json:"prefix,omitempty"`
+	Documents []DocumentUpload `json:"documents"`
+}
+
+type DocumentUpload struct {
+	ExternalID string `json:"external_id,omitempty"`
+	Document   any    `json:"document"`
 }
 
 type UploadResponse struct {
@@ -225,6 +230,7 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		centroid := centroids[centroidIdxList[idx]]
 		file, _ := json.Marshal(req.Documents[idx])
 		embedding := database.Document{
+			ExternalID:  req.Documents[idx].ExternalID,
 			Vector:      embedding,
 			Prefix:      req.Prefix,
 			Document:    file,

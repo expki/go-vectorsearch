@@ -8,6 +8,7 @@ import (
 
 type Document struct {
 	ID          uint64        `gorm:"primarykey"`
+	ExternalID  string        `gorm:"not null"`
 	Vector      VectorField   `gorm:"not null"`
 	LastUpdated time.Time     `gorm:"index:idx_document_updated;not null"`
 	Prefix      string        `gorm:"not null"`

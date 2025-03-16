@@ -24,25 +24,24 @@ import (
 )
 
 type SearchRequest struct {
-	Owner       string `json:"owner"`
-	Category    string `json:"category"`
-	Prefix      string `json:"prefix,omitempty"`
-	Text        string `json:"text"`
-	Count       uint   `json:"count"`
-	Offset      uint   `json:"offset,omitempty"`
-	NoDocuments bool   `json:"no_documents,omitempty"`
-	Centroids   int    `json:"centroids,omitempty"`
+	Owner     string `json:"owner"`
+	Category  string `json:"category"`
+	Prefix    string `json:"prefix,omitempty"`
+	Text      string `json:"text"`
+	Count     uint   `json:"count"`
+	Offset    uint   `json:"offset,omitempty"`
+	Centroids int    `json:"centroids,omitempty"`
 }
 
 type SearchResponse struct {
-	Documents []DocumentSearchInfo `json:"documents"`
+	Documents []DocumentSearch `json:"documents"`
 }
 
-type DocumentSearchInfo struct {
+type DocumentSearch struct {
+	DocumentUpload
 	DocumentID                 uint64  `json:"document_id"`
 	RelativeDocumentSimilarity float32 `json:"relative_document_similarity"`
 	RelativeCentroidSimilarity float32 `json:"relative_centroid_similarity"`
-	Document                   any     `json:"document,omitempty"`
 }
 
 func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
@@ -256,40 +255,41 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Fetch closest documents data
-	if !req.NoDocuments {
-		ids := make([]uint64, len(closestDocuments))
+	ids := make([]uint64, len(closestDocuments))
+	for idx, item := range closestDocuments {
+		ids[idx] = item.document.ID
+	}
+	var documents []database.Document
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "external_id", "document").Find(&documents, ids)
+	if result.Error == nil {
+		// success
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// request canceled
+		return res, result.Error
+	} else {
+		// exception encountered
+		return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
+	}
+	for _, document := range documents {
 		for idx, item := range closestDocuments {
-			ids[idx] = item.document.ID
-		}
-		var documents []database.Document
-		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "document").Find(&documents, ids)
-		if result.Error == nil {
-			// success
-		} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			// request canceled
-			return res, result.Error
-		} else {
-			// exception encountered
-			return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
-		}
-		for _, document := range documents {
-			for idx, item := range closestDocuments {
-				if item.document.ID == document.ID {
-					closestDocuments[idx].document.Document = document.Document
-					break
-				}
+			if item.document.ID == document.ID {
+				closestDocuments[idx].document.Document = document.Document
+				break
 			}
 		}
 	}
 
 	// Create response
-	res.Documents = make([]DocumentSearchInfo, req.Count)
+	res.Documents = make([]DocumentSearch, req.Count)
 	for idx, item := range closestDocuments {
-		res.Documents[idx] = DocumentSearchInfo{
+		res.Documents[idx] = DocumentSearch{
+			DocumentUpload: DocumentUpload{
+				ExternalID: item.document.ExternalID,
+				Document:   item.document.Document.JSON(),
+			},
 			DocumentID:                 item.document.ID,
 			RelativeDocumentSimilarity: item.similarity,
 			RelativeCentroidSimilarity: item.centroidSimilarity.similarity,
-			Document:                   item.document.Document.JSON(),
 		}
 	}
 

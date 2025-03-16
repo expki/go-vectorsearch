@@ -174,12 +174,16 @@ components:
         documents:
           type: array
           items:
-            anyOf:
-            - type: string
-            - type: array
-            - type: object
+            object:
+             external_id:
+               type: string
+             document:
+               anyOf:
+                - type: string
+                - type: array
+                - type: object
           description: The documents to embed
-          example: ["Once upon a time", ["In a galaxy far, far away"], {"story": "The Force Awakens"}]
+      example: {"documents": [{"document": "Once upon a time"}, {"document": ["In a galaxy far, far away"]}, {"document": {"story": "The Force Awakens"}}]}
     UploadResponse:
       type: object
       properties:
@@ -230,17 +234,28 @@ components:
               document_id:
                 type: integer
                 description: The ID of the similar document
-              similarity:
+              external_id:
+                type: string
+                description: The ID of the external document
+              relative_document_similarity:
                 type: number
                 format: float
-                description: The similarity score of the document
-              document:
-                anyOf:
-                - type: string
-                - type: array
-                - type: object
-                description: The actual content of the similar document, if included in the request.
-          example: [{"document_id": 1, "similarity": 0.95, "document": "Once upon a time"}]
+                description: The similarity score of the document compared to other documents in centroid
+              relative_centroid_similarity:
+                type: number
+                format: float
+                description: The similarity score of the centroid compared to other centroids
+              record:
+                document:
+                  anyOf:
+                  - type: string
+                  - type: array
+                  - type: object
+                  description: The actual content of the similar document, if included in the request.
+                external_id:
+                 type: string
+                  description: The ID of the external document
+          example: [{"document_id": 1, "relative_document_similarity": 0.70, "relative_document_similarity": 0.70, "document": "Once upon a time"}]
     ChatRequest:
       type: object
       required: ["text"]
