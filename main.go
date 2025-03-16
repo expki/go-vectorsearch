@@ -75,14 +75,9 @@ func main() {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}
 
-	test, err := aiClient.Embed(appCtx, ai.EmbedRequest{Model: cfg.Ollama.Embed, Input: []string{"Test"}})
-	if err != nil || len(test.Embeddings) == 0 {
-		logger.Sugar().Fatalf("aiClient.Embed: %v", err)
-	}
-
 	// Database
 	logger.Sugar().Info("Loading database...")
-	db, err := database.New(appCtx, cfg, len(test.Embeddings.Underlying()[0]))
+	db, err := database.New(appCtx, cfg.Database)
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}

@@ -16,21 +16,21 @@ import (
 )
 
 type Database struct {
-	cfg config.Config
+	cfg config.Database
 	*gorm.DB
 }
 
-func New(appCtx context.Context, cfg config.Config, vectorSize int) (db *Database, err error) {
+func New(appCtx context.Context, cfg config.Database) (db *Database, err error) {
 	// create logger
 	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
 		SlowThreshold:             30 * time.Second,
-		LogLevel:                  cfg.Database.LogLevel.GORM(),
+		LogLevel:                  cfg.LogLevel.GORM(),
 		IgnoreRecordNotFoundError: true,
 		Colorful:                  true,
 	})
 
 	// get dialectors from config
-	readwrite, readonly := cfg.Database.GetDialectors()
+	readwrite, readonly := cfg.GetDialectors()
 	if len(readwrite) == 0 {
 		return nil, errors.New("no writable database configured")
 	}
