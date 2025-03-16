@@ -4,35 +4,25 @@ import (
 	"time"
 
 	_ "github.com/expki/go-vectorsearch/env"
-	"gorm.io/gorm"
 )
 
 type Document struct {
-	ID        uint64        `gorm:"primarykey"`
-	Vector    VectorField   `gorm:"not null"`
-	UpdatedAt time.Time     `gorm:"autoUpdateTime;not null"`
-	Prefix    string        `gorm:"not null"`
-	Document  DocumentField `gorm:"not null"`
-	Hash      string        `gorm:"uniqueIndex:uq_document_hash;not null"`
+	ID          uint64        `gorm:"primarykey"`
+	Vector      VectorField   `gorm:"not null"`
+	LastUpdated time.Time     `gorm:"index:idx_document_updated;not null"`
+	Prefix      string        `gorm:"not null"`
+	Document    DocumentField `gorm:"not null"`
+	Hash        string        `gorm:"uniqueIndex:uq_document_hash;not null"`
 
 	// Parent
 	CentroidID uint64   `gorm:"uniqueIndex:uq_document_hash;index:idx_document_centroid;not null"`
 	Centroid   Centroid `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
-func (m *Document) BeforeCreate(tx *gorm.DB) error {
-	m.UpdatedAt = time.Now().UTC()
-	return nil
-}
-
-func (m *Document) BeforeUpdate(tx *gorm.DB) error {
-	m.UpdatedAt = time.Now().UTC()
-	return nil
-}
-
 type Centroid struct {
-	ID     uint64      `gorm:"primarykey"`
-	Vector VectorField `gorm:"not null"`
+	ID          uint64      `gorm:"primarykey"`
+	Vector      VectorField `gorm:"not null"`
+	LastUpdated time.Time   `gorm:"index:idx_centroid_updated;not null"`
 
 	// Parent
 	CategoryID uint64   `gorm:"index:idx_centroid_category;not null"`

@@ -139,42 +139,37 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 	matrixEmbeddings := embedRes.Embeddings.Underlying()
 
-	// Create database transation
-	tx := s.db.Begin().Clauses(dbresolver.Write)
+	// Create database context
 
 	// Get Owner
 	var owner database.Owner
-	result := tx.WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
+	result := s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
 		// owner found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 		// owner request canceled
-		tx.Rollback()
 		return res, result.Error
 	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		// owner create
 		owner = database.Owner{
 			Name: req.Owner,
 		}
-		result = tx.WithContext(ctx).Create(&owner)
+		result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Create(&owner)
 		if result.Error != nil {
-			tx.Rollback()
 			return res, errors.Join(errors.New("failed to create owner"), result.Error)
 		}
 	} else {
 		// owner retrieve error
-		tx.Rollback()
 		return res, errors.Join(errors.New("failed to get owner"), result.Error)
 	}
 
 	// Get Category
 	var category database.Category
-	result = tx.WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
+	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
 	if result.Error == nil {
 		// category found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 		// category request canceled
-		tx.Rollback()
 		return res, result.Error
 	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		// category create
@@ -183,29 +178,25 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			OwnerID: owner.ID,
 			Owner:   owner,
 		}
-		result = tx.WithContext(ctx).Create(&category)
+		result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Create(&category)
 		if result.Error != nil {
-			tx.Rollback()
 			return res, errors.Join(errors.New("failed to create category"), result.Error)
 		}
 	} else {
 		// category retrieve error
-		tx.Rollback()
 		return res, errors.Join(errors.New("failed to get category"), result.Error)
 	}
 
 	// Get Centroids
 	var centroids []database.Centroid
-	result = tx.WithContext(ctx).Where("category_id = ?", category.ID).Find(&centroids)
+	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("category_id = ?", category.ID).Find(&centroids)
 	if result.Error == nil {
 		// centroids found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 		// centroids request canceled
-		tx.Rollback()
 		return res, result.Error
 	} else {
 		// centroids retrieve error
-		tx.Rollback()
 		return res, errors.Join(errors.New("failed to get centroids"), result.Error)
 	}
 	if len(centroids) == 0 {
@@ -215,9 +206,8 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			CategoryID: category.ID,
 			Category:   category,
 		})
-		result = tx.WithContext(ctx).Create(&centroids)
+		result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Create(&centroids)
 		if result.Error != nil {
-			tx.Rollback()
 			return res, errors.Join(errors.New("failed to create initial centroid"), result.Error)
 		}
 	}
@@ -235,35 +225,31 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		centroid := centroids[centroidIdxList[idx]]
 		file, _ := json.Marshal(req.Documents[idx])
 		embedding := database.Document{
-			Vector:     embedding,
-			Prefix:     req.Prefix,
-			Document:   file,
-			Hash:       strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
-			CentroidID: centroid.ID,
-			Centroid:   centroid,
+			Vector:      embedding,
+			Prefix:      req.Prefix,
+			Document:    file,
+			Hash:        strconv.FormatUint(xxhash.Sum64([]byte(flattenedFiles[idx])), 36),
+			CentroidID:  centroid.ID,
+			Centroid:    centroid,
+			LastUpdated: time.Now(),
 		}
 		documents[idx] = embedding
 	}
-	result = tx.Clauses(
+	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Clauses(
 		clause.OnConflict{
 			Columns:   []clause.Column{{Name: "hash"}, {Name: "centroid_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"updated_at", "prefix", "vector"}),
+			DoUpdates: clause.AssignmentColumns([]string{"last_updated", "prefix", "vector"}),
 		},
-	).WithContext(ctx).Create(&documents)
+	).Create(&documents)
 	if result.Error == nil {
 		// documents created
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
 		// documents request canceled
-		tx.Rollback()
 		return res, result.Error
 	} else {
 		// documents save error
-		tx.Rollback()
 		return res, errors.Join(errors.New("failed to save documents"), result.Error)
 	}
-
-	// Commit transation
-	tx.Commit()
 
 	// Create response
 	res.DocumentIDs = make([]uint64, len(documents))

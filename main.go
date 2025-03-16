@@ -82,7 +82,7 @@ func main() {
 
 	// Database
 	logger.Sugar().Info("Loading database...")
-	db, err := database.New(cfg, len(test.Embeddings.Underlying()[0]))
+	db, err := database.New(appCtx, cfg, len(test.Embeddings.Underlying()[0]))
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}

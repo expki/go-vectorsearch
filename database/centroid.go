@@ -1,190 +1,188 @@
 package database
 
 import (
-	"bufio"
-	"encoding/binary"
-	"io"
+	"context"
+	"errors"
+	"math"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
-	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
-	"github.com/klauspost/compress/zstd"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/plugin/dbresolver"
 )
 
-type centroid struct {
-	Idx int
+func (d *Database) refreshCentroidJob(appCtx context.Context) {
+	logger.Sugar().Debug("Starting centroid refresh job")
 
-	lock sync.Mutex
-	file *os.File
+	var lock sync.Mutex
+	run := func() {
+		d.splitCentroidJob(appCtx)
+		d.centerCentroidJob(appCtx)
+		lock.Unlock()
+	}
+
+	lock.Lock()
+	go run()
+	ticker := time.NewTicker(config.CENTROID_REFRESH_INTERVAL)
+	for {
+		select {
+		case <-appCtx.Done():
+			logger.Sugar().Info("Shutting down centroid refresh job")
+			ticker.Stop()
+			return
+		case <-ticker.C:
+			if lock.TryLock() {
+				logger.Sugar().Debug("Checking centroids")
+				go run()
+			}
+		}
+	}
 }
 
-func (c *centroid) createWriter(vectorSize int) (rowWriter func(id uint64, vector []uint8), done func()) {
-	c.lock.Lock()
+func (d *Database) splitCentroidJob(appCtx context.Context) {
+	logger.Sugar().Info("Splitting Centroids started")
+	var centroids []Centroid
+	tx := d.WithContext(appCtx).Begin().Clauses(dbresolver.Write)
+	result := tx.Clauses(
+		clause.Locking{
+			Strength: "SHARE",
+			Table:    clause.Table{Name: clause.CurrentTable},
+			Options:  "SKIP LOCKED",
+		},
+	).Select("id", "last_updated", "category_id").FindInBatches(&centroids, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) error {
+		for _, centroid := range centroids {
+			// get document countDocuments
+			var countDocuments int64
+			err := tx.Model(&Document{}).Where("centroid_id = ?", centroid.ID).Count(&countDocuments).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				return nil
+			} else {
+				tx.Rollback()
+				return errors.Join(errors.New("failed to count documents for centroid"), err)
+			}
 
-	// move to start of file
-	c.file.Seek(0, io.SeekStart)
+			// check if centroid should be split
+			if countDocuments < config.MAX_CENTROID_SIZE {
+				continue
+			}
 
-	// clear file
-	c.file.Truncate(0)
+			// calculate new centroid count
+			countCentroids := int(math.Ceil(float64(countDocuments) / float64(config.MAX_CENTROID_SIZE)))
 
-	// write current date
-	writeDateTime(c.file, time.Now())
+			// fetch new centroid documents
+			var newCentroidDocuments []Document
+			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Order(gorm.Expr("RANDOM()")).Limit(countCentroids).Find(&newCentroidDocuments).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				tx.Rollback()
+				return nil
+			} else {
+				return errors.Join(errors.New("failed to fetch documents for centroid"), err)
+			}
 
-	// initial count
-	writeTotal(c.file, 0)
+			// Create new centroids
+			newCentroids := make([]Centroid, countCentroids)
+			newCentroids[0] = centroid
+			for idx := range countCentroids {
+				newCentroids[idx].Vector = newCentroidDocuments[idx].Vector
+				newCentroids[idx].LastUpdated = time.Time{}
+				newCentroids[idx].CategoryID = centroid.CategoryID
+			}
+			err = tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"last_updated", "vector"}),
+			}).Create(&newCentroids).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				tx.Rollback()
+				return nil
+			} else {
+				return errors.Join(errors.New("failed to create initial centroid"), err)
+			}
 
-	// create encoder
-	encoder, err := zstd.NewWriter(
-		c.file,
-		zstd.WithEncoderLevel(zstd.SpeedFastest),
-		zstd.WithEncoderCRC(false),
-		zstd.WithEncoderPadding(1),
-		zstd.WithNoEntropyCompression(true), // entropy seems to increase final size 5% as well as being 10% slower, there is no benefit
-	)
-	if err != nil {
-		logger.Sugar().Errorf("Failed to create zstd cache encoder: %v", err)
+			// reassign
+			err = reassignCentroidToCentroids(tx, centroid, newCentroids)
+			if err != nil {
+				return errors.Join(errors.New("failed to reassign centroid"), err)
+			}
+		}
+		return nil
+	})
+	if result.Error == nil {
+		// centroids found and handled
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// centroids request canceled
+		logger.Sugar().Debug("Split centroids cancelled")
+		tx.Rollback()
+		return
+	} else {
+		// centroids retrieve error
+		logger.Sugar().Errorf("Failed to retrieve centroids: %s", result.Error.Error())
+		tx.Rollback()
 		return
 	}
-
-	// Buffer
-	encoderBuffer := bufio.NewWriterSize(encoder, (8+vectorSize)*config.BATCH_SIZE_CACHE)
-
-	// Track total
-	var total uint64
-
-	return func(id uint64, vector []uint8) {
-			idBytes := make([]byte, 8)
-			binary.LittleEndian.PutUint64(idBytes, id)
-			encoderBuffer.Write(idBytes) // write id
-			encoderBuffer.Write(vector)  // write vector
-			total++
-		}, func() {
-			// close the encoder
-			encoderBuffer.Flush()
-			encoder.Close()
-
-			// update total count
-			c.file.Seek(8, io.SeekStart)
-			writeTotal(c.file, total)
-
-			// unlock the file
-			c.file.Sync()
-			c.lock.Unlock()
-		}
+	tx.Commit()
+	logger.Sugar().Info("Splitting Centroids completed")
 }
 
-func (c *centroid) createReader(vectorSize int) (rowReader func() (id uint64, vector []uint8), done func()) {
-	total := c.count()
-	if total == 0 {
-		return func() (uint64, []uint8) { return 0, nil }, func() {}
+func (d *Database) centerCentroidJob(appCtx context.Context) {
+
+}
+
+func reassignCentroidToCentroids(tx *gorm.DB, prevCentroid Centroid, newCentroids []Centroid) error {
+	// create new centroid matrix
+	newCentroidMatrix := make([][]uint8, len(newCentroids))
+	for idx, centroid := range newCentroids {
+		newCentroidMatrix[idx] = centroid.Vector
 	}
-	c.lock.Lock()
+	matrixCentroids := compute.NewMatrix(newCentroidMatrix)
 
-	// move to start of file after date & count
-	c.file.Seek(16, io.SeekStart)
+	// fetch documents for previous centroid
+	var documents []Document
+	result := tx.Select("id", "centroid_id", "vector").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+		// find closest centroids
+		documentMatrix := make([][]uint8, len(documents))
+		for idx, document := range documents {
+			documentMatrix[idx] = document.Vector
+		}
+		_, centroidIdList := matrixCentroids.Clone().CosineSimilarity(compute.NewMatrix(documentMatrix))
 
-	// create decoder
-	decoder, err := zstd.NewReader(
-		c.file,
-		zstd.IgnoreChecksum(true),
-	)
-	if err != nil {
-		logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
-	}
+		// split documents by centroid id
+		centroidToDocumentMap := make(map[uint64][]uint64, 0)
+		for _, centroid := range newCentroids {
+			centroidToDocumentMap[centroid.CategoryID] = make([]uint64, 0, 1000)
+		}
+		for idx, document := range documents {
+			key := newCentroids[centroidIdList[idx]].ID
+			centroidToDocumentMap[key] = append(centroidToDocumentMap[key], document.ID)
+		}
 
-	// Buffer read
-	decoderBuffer := bufio.NewReaderSize(decoder, (8+vectorSize)*config.BATCH_SIZE_CACHE)
-
-	// read the data
-	return func() (id uint64, vector []uint8) {
-			idBytes := make([]byte, 8)
-			_, err := io.ReadFull(decoderBuffer, idBytes)
-			if err == io.EOF {
-				return 0, nil
+		// update document centroid id
+		for centroidId, documentIds := range centroidToDocumentMap {
+			if centroidId == prevCentroid.ID {
+				continue
 			}
+			err = tx.Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", uint64(centroidId)).Error
 			if err != nil {
-				logger.Sugar().Fatalf("Failed to read full id from zstd cache decoder: %v", err)
+				return errors.Join(errors.New("failed to update document centroid id"), err)
 			}
-			vector = make([]uint8, vectorSize)
-			_, err = io.ReadFull(decoderBuffer, vector)
-			if err != nil {
-				logger.Sugar().Fatalf("Failed to read full vector from zstd cache decoder: %v", err)
-			}
-			return binary.LittleEndian.Uint64(idBytes), vector
-		}, func() {
-			decoder.Close()
-			c.lock.Unlock()
 		}
-}
-
-func (c *centroid) lastUpdated() time.Time {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// move to start of file
-	c.file.Seek(0, io.SeekStart)
-
-	// read the date
-	epochBytes := make([]byte, 8)
-	_, err := io.ReadFull(c.file, epochBytes)
-	if err != nil {
-		return time.Time{}
+		return nil
+	})
+	if result.Error == nil {
+		// centroids found and handled
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// centroids request canceled
+		return result.Error
+	} else {
+		// centroids retrieve error
+		return errors.Join(errors.New("failed to update documents"), result.Error)
 	}
-
-	// parse the epoch
-	epoch := binary.LittleEndian.Uint64(epochBytes)
-
-	// parse the date from epoch
-	return time.Unix(int64(epoch), 0)
-}
-
-func (c *centroid) count() uint64 {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// move to start of file after date
-	_, err := c.file.Seek(8, io.SeekStart)
-	if err != nil {
-		return 0
-	}
-
-	// read the count
-	epochBytes := make([]byte, 8)
-	_, err = io.ReadFull(c.file, epochBytes)
-	if err != nil {
-		return 0
-	}
-
-	// parse the epoch
-	return binary.LittleEndian.Uint64(epochBytes)
-}
-
-func writeDateTime(file *os.File, datetime time.Time) {
-	epoch := datetime.Unix()
-	epochBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(epochBytes, uint64(epoch))
-	file.Write(epochBytes)
-}
-
-func writeTotal(file *os.File, count uint64) {
-	totalBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(totalBytes, count)
-	file.Write(totalBytes)
-}
-
-func ReadCentroidBatch(rowReader func() (id uint64, vector []uint8), size int) (ids []uint64, matrix [][]uint8) {
-	ids = make([]uint64, size)
-	matrix = make([][]uint8, size)
-	for idx := range size {
-		id, vector := rowReader()
-		if vector == nil {
-			return ids[:idx], matrix[:idx]
-		}
-		ids[idx] = id
-		matrix[idx] = vector
-	}
-	return ids, matrix
+	return nil
 }

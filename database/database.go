@@ -1,10 +1,10 @@
 package database
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
@@ -17,18 +17,15 @@ import (
 
 type Database struct {
 	cfg config.Config
-
 	*gorm.DB
-	CacheLock sync.RWMutex
-	Cache     map[uint64]*Cache
 }
 
-func New(cfg config.Config, vectorSize int) (db *Database, err error) {
+func New(appCtx context.Context, cfg config.Config, vectorSize int) (db *Database, err error) {
 	// create logger
 	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
 		SlowThreshold:             30 * time.Second,
 		LogLevel:                  cfg.Database.LogLevel.GORM(),
-		IgnoreRecordNotFoundError: false,
+		IgnoreRecordNotFoundError: true,
 		Colorful:                  true,
 	})
 
@@ -81,16 +78,8 @@ func New(cfg config.Config, vectorSize int) (db *Database, err error) {
 			return nil, err
 		}
 	}
-	db = &Database{cfg: cfg, DB: godb, Cache: make(map[uint64]*Cache)}
-
-	// create cache dir
-	if _, err := os.Stat(cfg.Cache); os.IsNotExist(err) {
-		err = os.Mkdir(cfg.Cache, 0755)
-		if err != nil {
-			logger.Sugar().Errorf("failed to create cache dir %q: %v", cfg.Cache, err)
-			return nil, err
-		}
-	}
+	db = &Database{cfg: cfg, DB: godb}
+	go db.refreshCentroidJob(appCtx)
 
 	return db, nil
 }
@@ -105,9 +94,6 @@ func (d *Database) Close() error {
 	if err != nil {
 		logger.Sugar().Errorf("failed to close database connection: %v", err)
 		return err
-	}
-	for _, cache := range d.Cache {
-		cache.Close()
 	}
 	return nil
 }

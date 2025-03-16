@@ -196,7 +196,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	// Find closest centroids to embedding
 	matrixCentroids := make([][]uint8, len(centroids))
 	for idx, centroid := range centroids {
-		matrixCentroids[idx] = centroid.Vector.Underlying()
+		matrixCentroids[idx] = centroid.Vector
 	}
 	type centroidSimilarity struct {
 		centroid   database.Centroid

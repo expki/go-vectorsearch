@@ -34,3 +34,16 @@ func NewMatrix(matrix [][]uint8) Matrix {
 		Shape: tensor.Shape{len(matrix), len(matrix[0])},
 	}
 }
+
+func (v *Vector) Clone() (clone *Vector) {
+	return &Vector{
+		Dense: v.Dense.Clone().(*tensor.Dense),
+	}
+}
+
+func (m *Matrix) Clone() (clone *Matrix) {
+	return &Matrix{
+		Dense: m.Dense.Clone().(*tensor.Dense),
+		Shape: m.Shape,
+	}
+}
