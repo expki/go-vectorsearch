@@ -11,14 +11,14 @@ import (
 
 var index atomic.Uint64
 
-type server struct {
+type Server struct {
 	db     *database.Database
 	ai     ai.AI
 	config config.Ollama
 }
 
-func New(cfg config.Ollama, db *database.Database, ai ai.AI) *server {
-	return &server{
+func New(cfg config.Ollama, db *database.Database, ai ai.AI) *Server {
+	return &Server{
 		db:     db,
 		ai:     ai,
 		config: cfg,

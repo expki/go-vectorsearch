@@ -38,7 +38,7 @@ type UploadResponse struct {
 	DocumentIDs []uint64 `json:"document_ids"`
 }
 
-func (s *server) UploadHttp(w http.ResponseWriter, r *http.Request) {
+func (s *Server) UploadHttp(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d upload request started", txid)
@@ -109,7 +109,7 @@ func (s *server) UploadHttp(w http.ResponseWriter, r *http.Request) {
 }
 
 // Upload calculates the embedding for the uploaded document then saves the document and embedding in the database.
-func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadResponse, err error) {
+func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadResponse, err error) {
 	if len(req.Documents) == 0 {
 		return res, errors.New("no documents provided")
 	}

@@ -44,7 +44,7 @@ type DocumentSearch struct {
 	RelativeCentroidSimilarity float32 `json:"relative_centroid_similarity"`
 }
 
-func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
+func (s *Server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d search request started", txid)
@@ -114,7 +114,7 @@ func (s *server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 }
 
 // Search for a previously uploaded embedding vector in the database and return similar documents.
-func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchResponse, err error) {
+func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchResponse, err error) {
 	req.Count = max(1, min(req.Count, 20))
 	if req.Centroids == 0 {
 		req.Centroids = 1

@@ -27,7 +27,7 @@ type ChatRequest struct {
 	Documents   []any    `json:"documents,omitempty"`
 }
 
-func (s *server) ChatHttp(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	txid := index.Add(1)
 	logger.Sugar().Debugf("%d chat request started", txid)
@@ -112,7 +112,7 @@ func (s *server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 }
 
 // Chat handles a chat request and returns a stream of bytes for the response.
-func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan []byte, errStream <-chan error) {
+func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan []byte, errStream <-chan error) {
 	resChan := make(chan []byte, 1024)
 	errChan := make(chan error, 1)
 
