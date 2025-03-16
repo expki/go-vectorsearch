@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"sync"
@@ -111,6 +112,8 @@ func (d *Database) splitCentroidJob(appCtx context.Context) {
 			if err != nil {
 				return errors.Join(errors.New("failed to reassign centroid"), err)
 			}
+			logger.Sugar().Debugf("Splitted centroid %d into %d centroids", centroid.ID, len(newCentroids))
+			return nil
 		}
 		return nil
 	})
@@ -129,10 +132,6 @@ func (d *Database) splitCentroidJob(appCtx context.Context) {
 	}
 	tx.Commit()
 	logger.Sugar().Info("Splitting Centroids completed")
-}
-
-func (d *Database) centerCentroidJob(appCtx context.Context) {
-
 }
 
 func reassignCentroidToCentroids(tx *gorm.DB, prevCentroid Centroid, newCentroids []Centroid) error {
@@ -185,4 +184,85 @@ func reassignCentroidToCentroids(tx *gorm.DB, prevCentroid Centroid, newCentroid
 		return errors.Join(errors.New("failed to update documents"), result.Error)
 	}
 	return nil
+}
+
+func (d *Database) centerCentroidJob(appCtx context.Context) {
+	logger.Sugar().Info("Centering Centroids started")
+	var centroids []Centroid
+	tx := d.WithContext(appCtx).Begin().Clauses(dbresolver.Write)
+	result := tx.Clauses(
+		clause.Locking{
+			Strength: "SHARE",
+			Table:    clause.Table{Name: clause.CurrentTable},
+			Options:  "SKIP LOCKED",
+		},
+	).Select("id", "last_updated").FindInBatches(&centroids, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) error {
+		for _, centroid := range centroids {
+			fmt.Println("checking:", centroid.ID)
+			// Check if centroid requries update
+			var latestDocument Document
+			err := tx.Where("centroid_id = ?", centroid.ID).Order("last_updated DESC").Take(&latestDocument).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				return err
+			} else {
+				return errors.Join(errors.New("failed to find latest document"), err)
+			}
+			if latestDocument.LastUpdated.Before(centroid.LastUpdated) {
+				continue
+			}
+
+			// get centroid documents
+			var documents []Document
+			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Find(&documents).Error
+			if err == nil || errors.Is(err, gorm.ErrRecordNotFound) {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				return err
+			} else {
+				return errors.Join(errors.New("failed to find documents"), err)
+			}
+			if len(documents) == 0 {
+				continue
+			}
+
+			// center centroid
+			centerVector := make([]float32, len(documents[0].Vector))
+			for _, document := range documents {
+				for i, v := range compute.DequantizeVector(document.Vector.Underlying(), -1, 1) {
+					centerVector[i] += v
+				}
+			}
+			for i := range centerVector {
+				centerVector[i] /= float32(len(documents))
+			}
+
+			// update centroid vector
+			centroid.LastUpdated = time.Now()
+			centroid.Vector = compute.QuantizeVector(centerVector, -1, 1)
+			err = tx.Model(&centroid).Updates(centroid).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				return err
+			} else {
+				return errors.Join(errors.New("failed to update centroid"), err)
+			}
+			logger.Sugar().Debugf("Updated centroid %d with new vector", centroid.ID)
+		}
+		return nil
+	})
+	if result.Error == nil {
+		// centroids found and handled
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// centroids request canceled
+		logger.Sugar().Debug("Split centroids cancelled")
+		tx.Rollback()
+		return
+	} else {
+		// centroids retrieve error
+		logger.Sugar().Errorf("Failed to retrieve centroids: %s", result.Error.Error())
+		tx.Rollback()
+		return
+	}
+	tx.Commit()
+	logger.Sugar().Info("Centering Centroids completed")
 }
