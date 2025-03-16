@@ -245,7 +245,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Clauses(
 		clause.OnConflict{
-			Columns:   []clause.Column{{Name: "hash"}, {Name: "centroid_id"}},
+			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"last_updated", "prefix", "vector", "external_id"}),
 		},
 	).Create(&documents)
