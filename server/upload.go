@@ -127,7 +127,7 @@ func (s *server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Get embeddings
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.Ollama.Embed,
+		Model: s.config.Embed,
 		Input: information,
 	})
 	if err == nil {

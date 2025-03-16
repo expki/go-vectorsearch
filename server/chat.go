@@ -189,7 +189,7 @@ func (s *server) Chat(ctx context.Context, req ChatRequest) (resStream <-chan []
 
 		// Start chat
 		chat := s.ai.ChatStream(ctx, ai.ChatRequest{
-			Model:    s.config.Ollama.Chat,
+			Model:    s.config.Chat,
 			Messages: messages,
 		})
 

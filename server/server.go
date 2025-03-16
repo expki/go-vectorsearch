@@ -14,10 +14,10 @@ var index atomic.Uint64
 type server struct {
 	db     *database.Database
 	ai     ai.AI
-	config config.Config
+	config config.Ollama
 }
 
-func New(cfg config.Config, db *database.Database, ai ai.AI) *server {
+func New(cfg config.Ollama, db *database.Database, ai ai.AI) *server {
 	return &server{
 		db:     db,
 		ai:     ai,

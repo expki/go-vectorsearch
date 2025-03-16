@@ -127,7 +127,7 @@ func (s *server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
 	}
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.Ollama.Embed,
+		Model: s.config.Embed,
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
 	})
 	if err == nil {

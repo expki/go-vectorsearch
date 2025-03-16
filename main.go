@@ -84,7 +84,7 @@ func main() {
 
 	// Server
 	logger.Sugar().Info("Loading Server...")
-	srv := server.New(cfg, db, aiClient)
+	srv := server.New(cfg.Ollama, db, aiClient)
 
 	// Create mux
 	mux := http.NewServeMux()
