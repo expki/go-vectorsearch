@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"sync"
@@ -198,7 +197,6 @@ func (d *Database) centerCentroidJob(appCtx context.Context) {
 		},
 	).Select("id", "last_updated").FindInBatches(&centroids, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) error {
 		for _, centroid := range centroids {
-			fmt.Println("checking:", centroid.ID)
 			// Check if centroid requries update
 			var latestDocument Document
 			err := tx.Where("centroid_id = ?", centroid.ID).Order("last_updated DESC").Take(&latestDocument).Error

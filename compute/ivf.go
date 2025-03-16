@@ -150,10 +150,10 @@ func (ivf *ivfflat) TrainIVF() (train func(batch [][]uint8) (assignments []int),
 			assignments = argmaxAssignments.Data().([]int)
 
 			// Calculate mini-batch centroids
-			//newCentroids, counts := ivf.computeBatchAverages(matrix, assignments)
+			newCentroids, counts := ivf.computeBatchAverages(matrix, assignments)
 
 			// Update centroids with mini-batch centroids
-			//ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
+			ivf.updateCentroidsMiniBatch(newBatchSize, newCentroids, counts)
 
 			// Reset for next run
 			machine.Reset()
