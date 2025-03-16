@@ -212,7 +212,7 @@ func (d *Database) centerCentroidJob(appCtx context.Context) {
 
 			// get centroid documents
 			var documents []Document
-			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Find(&documents).Error
+			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Limit(config.MAX_CENTROID_SIZE).Find(&documents).Error
 			if err == nil || errors.Is(err, gorm.ErrRecordNotFound) {
 			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 				return err
