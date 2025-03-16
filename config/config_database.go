@@ -39,17 +39,19 @@ func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
 func (c LogLevel) GORM() (level logger.LogLevel) {
 	switch strings.ToLower(strings.TrimSpace(c.String())) {
 	case LogLevelDebug.String(), "trace":
-		return logger.Silent
+		return logger.Info
 	case LogLevelInfo.String(), "information", "notice":
 		return logger.Info
 	case LogLevelWarn.String(), "warning", "alert":
 		return logger.Warn
-	case LogLevelError.String(), "silent":
+	case LogLevelError.String():
 		return logger.Error
 	case LogLevelFatal.String(), "critical", "emergency":
 		return logger.Error
 	case LogLevelPanic.String():
 		return logger.Error
+	case "silent":
+		return logger.Silent
 	default:
 		return logger.Error
 	}

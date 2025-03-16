@@ -77,7 +77,7 @@ func (d *Database) splitCentroidJob(appCtx context.Context) {
 
 			// fetch new centroid documents
 			var newCentroidDocuments []Document
-			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Order(gorm.Expr("RANDOM()")).Limit(countCentroids).Find(&newCentroidDocuments).Error
+			err = tx.Where("centroid_id = ?", centroid.ID).Select("id", "vector").Order("RANDOM()").Limit(countCentroids).Find(&newCentroidDocuments).Error
 			if err == nil {
 			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 				tx.Rollback()
