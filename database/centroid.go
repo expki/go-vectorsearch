@@ -55,6 +55,37 @@ func (d *Database) refreshCentroids(appCtx context.Context) {
 		d.refreshCentroid(appCtx, centroid)
 		bar.Add(1)
 	}
+
+	// check if it still needs to be refreshed
+	if d.provider == config.DatabaseProvider_PostgreSQL {
+		for {
+			var maxCount int
+			err := d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Raw(`
+	SELECT COUNT(d.id) AS dc_count
+	FROM centroids AS c
+	LEFT JOIN documents AS d
+	ON d.centroid_id = c.id
+	GROUP BY c.id, c.last_updated
+	ORDER BY dc_count DESC
+	LIMIT 1;`).Scan(&maxCount).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				break
+			} else {
+				logger.Sugar().Errorw("Failed re-refresh centroid", "error", err)
+				break
+			}
+			if maxCount <= config.MAX_CENTROID_SIZE {
+				break
+			}
+			bar.Set(bar.GetMax() + len(centroids))
+			for _, centroid := range centroids {
+				d.refreshCentroid(appCtx, centroid)
+				bar.Add(1)
+			}
+		}
+	}
+
 	bar.Close()
 	logger.Sugar().Info("Finished centroids refresh job")
 }
@@ -113,7 +144,6 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 			return
 		}
 	}
-
 	err = d.reCenterCentroid(appCtx, centroid)
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -124,7 +154,6 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 		logger.Sugar().Errorw("Failed to re-center centroid", "error", err)
 		return
 	}
-	tx.Commit()
 }
 
 func (d *Database) splitCentroid(appCtx context.Context, centroid Centroid) (original Centroid, newCentroids []Centroid) {
