@@ -271,7 +271,7 @@ func (d *Database) reCenterCentroid(appCtx context.Context, centroidTX *gorm.DB,
 	// update centroid vector
 	centroid.LastUpdated = time.Now().UTC()
 	centroid.Vector = compute.QuantizeVector(centerVector, -1, 1)
-	err = centroidTX.Model(&centroid).Updates(centroid).Error
+	err = centroidTX.Model(&centroid).Select("last_updated", "vector").Updates(Centroid{LastUpdated: centroid.LastUpdated, Vector: centroid.Vector}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
