@@ -45,7 +45,7 @@ func (d *Database) refreshCentroids(appCtx context.Context) {
 		Column: clause.Column{Name: "last_updated"},
 	}
 	var centroids []Centroid
-	err := d.WithContext(appCtx).Clauses(dbresolver.Read).Select("id").Order(order).Find(&centroids).Error
+	err := d.WithContext(appCtx).Clauses(dbresolver.Read).Order(order).Find(&centroids).Error
 	if err != nil {
 		logger.Sugar().Errorw("Failed to fetch centroids", "error", err)
 		return
@@ -271,7 +271,10 @@ func (d *Database) reCenterCentroid(appCtx context.Context, centroidTX *gorm.DB,
 	// update centroid vector
 	centroid.LastUpdated = time.Now().UTC()
 	centroid.Vector = compute.QuantizeVector(centerVector, -1, 1)
-	err = centroidTX.Model(&centroid).Select("last_updated", "vector").Updates(Centroid{LastUpdated: centroid.LastUpdated, Vector: centroid.Vector}).Error
+	err = centroidTX.Model(&Centroid{}).Where("id = ?", centroid.ID).Updates(map[string]any{
+		"last_updated": centroid.LastUpdated,
+		"vector":       centroid.Vector,
+	}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
