@@ -22,13 +22,7 @@ func (d *Database) refreshCentroidJob(appCtx context.Context) {
 	logger.Sugar().Debug("Starting centroid refresh job")
 
 	var lock sync.Mutex
-	run := func() {
-		d.refreshCentroids(appCtx)
-		lock.Unlock()
-	}
 
-	lock.Lock()
-	go run()
 	ticker := time.NewTicker(config.CENTROID_REFRESH_INTERVAL)
 	for {
 		select {
@@ -38,8 +32,8 @@ func (d *Database) refreshCentroidJob(appCtx context.Context) {
 			return
 		case <-ticker.C:
 			if lock.TryLock() {
-				logger.Sugar().Debug("Checking centroids")
-				go run()
+				d.refreshCentroids(appCtx)
+				lock.Unlock()
 			}
 		}
 	}
