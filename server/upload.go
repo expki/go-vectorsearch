@@ -27,6 +27,7 @@ type UploadRequest struct {
 	Category  string           `json:"category"`
 	Prefix    string           `json:"prefix,omitempty"`
 	Documents []DocumentUpload `json:"documents"`
+	NoUpdate  bool             `json:"no_update"` // if true, do not update the document
 }
 
 type DocumentUpload struct {
@@ -243,12 +244,19 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		}
 		documents[idx] = embedding
 	}
-	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Clauses(
-		clause.OnConflict{
+	tx := s.db.Clauses(dbresolver.Write).WithContext(ctx)
+	if !req.NoUpdate {
+		tx = tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"last_updated", "prefix", "vector", "external_id"}),
-		},
-	).Create(&documents)
+		})
+	} else {
+		tx = tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
+			DoNothing: true,
+		})
+	}
+	result = tx.Create(&documents)
 	if result.Error == nil {
 		// documents created
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
