@@ -94,6 +94,12 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 		d.reBalanceCentroids(appCtx, centroid, newCentroids)
 	}
 
+	// Unlock centroid
+	logger.Sugar().Debug("Centroid refreshed", "centroid_id", centroid.ID)
+	if d.provider == config.DatabaseProvider_PostgreSQL {
+		tx.Commit()
+	}
+
 	// re-center original and splitted centroids
 	for _, newCentroid := range newCentroids {
 		err = d.reCenterCentroid(appCtx, d.DB.WithContext(appCtx).Clauses(dbresolver.Write), newCentroid)
@@ -107,6 +113,17 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 			return
 		}
 	}
+
+	// Lock centroid for writing
+	tx = d.WithContext(appCtx).Clauses(dbresolver.Write)
+	if d.provider == config.DatabaseProvider_PostgreSQL {
+		tx = tx.Begin()
+		tx = tx.Clauses(clause.Locking{
+			Strength: "SHARE",
+			Table:    clause.Table{Name: clause.CurrentTable},
+			Options:  "NOWAIT",
+		})
+	}
 	err = d.reCenterCentroid(appCtx, tx, centroid)
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -117,12 +134,7 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 		logger.Sugar().Errorw("Failed to re-center centroid", "error", err)
 		return
 	}
-
-	// Unlock centroid
-	logger.Sugar().Debug("Centroid refreshed", "centroid_id", centroid.ID)
-	if d.provider == config.DatabaseProvider_PostgreSQL {
-		tx.Commit()
-	}
+	tx.Commit()
 }
 
 func (d *Database) splitCentroid(appCtx context.Context, centroid Centroid) (original Centroid, newCentroids []Centroid) {
