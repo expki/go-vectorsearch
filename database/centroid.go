@@ -102,7 +102,7 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 
 	// re-center original and splitted centroids
 	for _, newCentroid := range newCentroids {
-		err = d.reCenterCentroid(appCtx, d.DB.WithContext(appCtx).Clauses(dbresolver.Write), newCentroid)
+		err = d.reCenterCentroid(appCtx, newCentroid)
 		if err == nil {
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			tx.Rollback()
@@ -114,17 +114,7 @@ func (d *Database) refreshCentroid(appCtx context.Context, centroid Centroid) {
 		}
 	}
 
-	// Lock centroid for writing
-	tx = d.WithContext(appCtx).Clauses(dbresolver.Write)
-	if d.provider == config.DatabaseProvider_PostgreSQL {
-		tx = tx.Begin()
-		tx = tx.Clauses(clause.Locking{
-			Strength: "SHARE",
-			Table:    clause.Table{Name: clause.CurrentTable},
-			Options:  "NOWAIT",
-		})
-	}
-	err = d.reCenterCentroid(appCtx, tx, centroid)
+	err = d.reCenterCentroid(appCtx, centroid)
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		tx.Rollback()
@@ -244,7 +234,7 @@ func (d *Database) reBalanceCentroids(appCtx context.Context, centroid Centroid,
 	}
 }
 
-func (d *Database) reCenterCentroid(appCtx context.Context, centroidTX *gorm.DB, centroid Centroid) error {
+func (d *Database) reCenterCentroid(appCtx context.Context, centroid Centroid) error {
 	// Check if centroid requries update
 	var latestDocument Document
 	err := d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("centroid_id = ?", centroid.ID).Order("last_updated DESC").Take(&latestDocument).Error
@@ -283,7 +273,7 @@ func (d *Database) reCenterCentroid(appCtx context.Context, centroidTX *gorm.DB,
 	// update centroid vector
 	centroid.LastUpdated = time.Now().UTC()
 	centroid.Vector = compute.QuantizeVector(centerVector, -1, 1)
-	err = centroidTX.Save(&centroid).Error
+	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Save(&centroid).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
