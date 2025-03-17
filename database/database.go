@@ -16,7 +16,8 @@ import (
 )
 
 type Database struct {
-	cfg config.Database
+	provider config.DatabaseProvider
+	cfg      config.Database
 	*gorm.DB
 }
 
@@ -30,7 +31,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 	})
 
 	// get dialectors from config
-	readwrite, readonly := cfg.GetDialectors()
+	readwrite, readonly, provider := cfg.GetDialectors()
 	if len(readwrite) == 0 {
 		return nil, errors.New("no writable database configured")
 	}
@@ -78,7 +79,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 			return nil, err
 		}
 	}
-	db = &Database{cfg: cfg, DB: godb}
+	db = &Database{provider: provider, cfg: cfg, DB: godb}
 	go db.refreshCentroidJob(appCtx)
 
 	return db, nil

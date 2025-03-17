@@ -18,10 +18,10 @@ type Database struct {
 	LogLevel         LogLevel              `json:"log_level"` // 0: Silent, 1: Error, 2: Warn, 3: Info, 4: Debug
 }
 
-func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
+func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector, dbProvider DatabaseProvider) {
 	if c.Sqlite != "" {
 		readwrite = append(readwrite, sqlite.Open(c.Sqlite))
-		return
+		return readwrite, nil, DatabaseProvider_Sqlite
 	}
 	for _, dsn := range c.Postgres {
 		if dsn != "" {
@@ -33,7 +33,7 @@ func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector) {
 			readonly = append(readonly, postgres.Open(dsn))
 		}
 	}
-	return
+	return readwrite, readonly, DatabaseProvider_PostgreSQL
 }
 
 func (c LogLevel) GORM() (level logger.LogLevel) {
@@ -82,3 +82,11 @@ func (s SingleOrSlice[T]) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal([]T(s))
 }
+
+type DatabaseProvider uint8
+
+const (
+	DatabaseProvider_Sqlite DatabaseProvider = iota + 1
+	DatabaseProvider_PostgreSQL
+	// Add more database types as needed
+)
