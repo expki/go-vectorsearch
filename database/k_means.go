@@ -35,7 +35,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	} else {
 		return errors.Join(errors.New("failed to get current centroids"), err)
 	}
-	if len(centroids) <= k { // already have enough centroids
+	if len(centroids) >= k { // already have enough centroids
 		return nil
 	}
 
@@ -55,18 +55,16 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		})
 	}
 
+	// convert centroids to matrix
+	matrixQuantizedCentroids := make([][]uint8, k)
+	for idx, centroid := range centroids {
+		matrixQuantizedCentroids[idx] = centroid.Vector
+	}
+
 	// Loop until convergence
-	bar := progressbar.Default(0, "K-Means Clustering")
-	var newMatrixQuantizedCentroids [][]uint8
+	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
 	for !converged {
-		bar.AddMax64(countDocuments)
-
-		// convert centroids to matrix
-		matrixQuantizedCentroids := make([][]uint8, k)
-		for idx, centroid := range centroids {
-			matrixQuantizedCentroids[idx] = centroid.Vector
-		}
 		matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
 
 		// initialize new centroids
@@ -118,7 +116,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		}
 
 		// quantize new centroids
-		newMatrixQuantizedCentroids = compute.QuantizeMatrix(newCentroidsMeanVectors, -1, 1)
+		newMatrixQuantizedCentroids := compute.QuantizeMatrix(newCentroidsMeanVectors, -1, 1)
 
 		// check if converged
 		for idx, newCentroid := range newMatrixQuantizedCentroids {
@@ -128,11 +126,14 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 				break
 			}
 		}
+
+		// set new centroids
+		matrixQuantizedCentroids = newMatrixQuantizedCentroids
 	}
 	bar.Close()
 
 	// Update centroid vectors
-	for idx, vector := range newMatrixQuantizedCentroids {
+	for idx, vector := range matrixQuantizedCentroids {
 		centroids[idx].Vector = vector
 	}
 
@@ -147,9 +148,9 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 
 	// Assign documents to new centroids
 	bar = progressbar.Default(int64(countDocuments), "Reassigning Documents to New Centroids")
-	matrixCentroids := compute.NewMatrix(newMatrixQuantizedCentroids)
+	matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
 	var documents []Document
-	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "centroid_id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "vector", "centroid_id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 		// convert documents to matrix
 		documentQuantizedMatrix := make([][]uint8, len(documents))
 		for idx, document := range documents {

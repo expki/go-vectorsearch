@@ -53,7 +53,7 @@ func (d *Database) refreshCentroids(appCtx context.Context) {
 	bar := progressbar.Default(int64(len(categories)), "Processing categories")
 	for _, category := range categories {
 		// Lock category
-		tx := d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Begin() // Start a transaction
+		tx := d.DB.WithContext(appCtx).Clauses(dbresolver.Write) // Start a transaction
 		if d.provider == config.DatabaseProvider_PostgreSQL {
 			tx = tx.Begin()
 			tx = tx.Clauses(clause.Locking{
@@ -70,10 +70,8 @@ func (d *Database) refreshCentroids(appCtx context.Context) {
 				tx.Rollback()
 			}
 			return
-		} else if strings.Contains(strings.ToLower(err.Error()), "lock") {
-			if d.provider == config.DatabaseProvider_PostgreSQL {
-				tx.Rollback()
-			}
+		} else if d.provider == config.DatabaseProvider_PostgreSQL && strings.Contains(strings.ToLower(err.Error()), "lock") {
+			tx.Rollback()
 			bar.Add(1)
 			continue // skip if another instance is already processing the category
 		} else {
