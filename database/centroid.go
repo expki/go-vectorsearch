@@ -78,7 +78,7 @@ func (d *Database) refreshCentroids(appCtx context.Context) {
 			if maxCount <= config.MAX_CENTROID_SIZE {
 				break
 			}
-			bar.Set(bar.GetMax() + len(centroids))
+			bar.AddMax(len(centroids))
 			for _, centroid := range centroids {
 				d.refreshCentroid(appCtx, centroid)
 				bar.Add(1)

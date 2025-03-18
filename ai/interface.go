@@ -22,5 +22,5 @@ type AI interface {
 	Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error)
 
 	// Chat facilitates a conversation between the AI and a user with documentation as context as a byte stream.
-	ChatStream(ctx context.Context, request ChatRequest) (stream io.Reader)
+	ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser)
 }

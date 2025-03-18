@@ -97,7 +97,7 @@ type chatStream struct {
 	Done      bool        `json:"done"`
 }
 
-func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream io.Reader) {
+func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser) {
 	request.Stream = true
 	stream, writer := io.Pipe()
 
@@ -135,18 +135,10 @@ func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream i
 			return
 		}
 		// Read response
-		reader := bufio.NewReader(resp.Body)
-		for {
-			line, err := reader.ReadString('\n')
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				writer.CloseWithError(err)
-				return
-			}
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
 			var res chatStream
-			err = json.Unmarshal([]byte(line), &res)
+			err = json.Unmarshal([]byte(scanner.Text()), &res)
 			if err != nil {
 				writer.CloseWithError(err)
 				return

@@ -83,8 +83,8 @@ func (n *noai) Chat(_ context.Context, request ai.ChatRequest) (response ai.Chat
 }
 
 // ChatStream implementes a fake ai.ChatStream
-func (n *noai) ChatStream(_ context.Context, request ai.ChatRequest) (stream io.Reader) {
+func (n *noai) ChatStream(_ context.Context, request ai.ChatRequest) (stream io.ReadCloser) {
 	raw := make([]byte, n.random.Intn(generateMaxLength))
 	n.random.Read(raw)
-	return bytes.NewBuffer([]byte(hex.EncodeToString(raw)))
+	return io.NopCloser(bytes.NewBuffer([]byte(hex.EncodeToString(raw))))
 }
