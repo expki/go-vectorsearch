@@ -7,7 +7,7 @@ import (
 )
 
 // TODO: Reuse graph and machine
-func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
+func (vector Vector) CosineSimilarity(matrix Matrix) (relativeSimilarity []float32) {
 	g := gorgonia.NewGraph()
 
 	// Input vector
@@ -48,7 +48,7 @@ func (vector Vector) CosineSimilarity(matrix Matrix) []float32 {
 }
 
 // Calculate the cosine similarity between two matrices. The first matrix is the input matrix and the second matrix is the batch of vectors to compare against.
-func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, bestMatches []int) {
+func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 	g := gorgonia.NewGraph()
 
 	// Create tensor nodes to hold M1 and M2 (rank=2)
@@ -110,9 +110,9 @@ func (matrix1 Matrix) CosineSimilarity(matrix2 Matrix) (similarities []float32, 
 	}
 
 	// Convert to Go slice
-	bestMatches = argmaxTensor.Data().([]int)
+	nearestIndexList = argmaxTensor.Data().([]int)
 
-	return cosSim.Value().Data().([]float32), bestMatches
+	return cosSim.Value().Data().([]float32), nearestIndexList
 }
 
 // rowWiseL2Norm computes the row-wise L2-norms for a matrix node [N, D], returning a node of shape [N].
