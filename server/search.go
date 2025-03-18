@@ -230,6 +230,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			for idx, document := range documents {
 				matrixDocuments[idx] = document.Vector
 			}
+			// TODO: pretty sure the similarity of different batches cannot be directly compared since it is the relative similarity to the batch being calculated.
 			for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrixDocuments)) {
 				closestDocuments = append(closestDocuments, documentSimilarity{
 					centroidSimilarity: &centroid,
