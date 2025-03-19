@@ -28,6 +28,7 @@ func CreateSample(path string) error {
 		},
 		Database: Database{
 			Sqlite: "./vectors.db",
+			Cache:  "./cache",
 		},
 		LogLevel: LogLevelInfo,
 	}

@@ -16,6 +16,7 @@ type Database struct {
 	Postgres         SingleOrSlice[string] `json:"postgres"`
 	PostgresReadOnly SingleOrSlice[string] `json:"postgres_readonly"`
 	LogLevel         LogLevel              `json:"log_level"` // 0: Silent, 1: Error, 2: Warn, 3: Info, 4: Debug
+	Cache            string                `json:"cache"`
 }
 
 func (c Database) GetDialectors() (readwrite, readonly []gorm.Dialector, dbProvider DatabaseProvider) {

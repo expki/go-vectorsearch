@@ -61,6 +61,13 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		matrixQuantizedCentroids[idx] = centroid.Vector
 	}
 
+	// create cache of documents
+	cache, err := d.newCache(appCtx, categoryID)
+	if err != nil {
+		return errors.Join(errors.New("failed to create cache"), err)
+	}
+	defer cache.Close()
+
 	// Loop until convergence
 	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
@@ -76,13 +83,20 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 			newCentroidsSumVectors[idx] = make([]float32, len(matrixQuantizedCentroids[0]))
 		}
 
-		// retrieve category documents in batches
-		var documents []Document
-		err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "vector").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-			// convert documents to matrix
-			documentQuantizedMatrix := make([][]uint8, len(documents))
-			for idx, document := range documents {
-				documentQuantizedMatrix[idx] = document.Vector
+		// read documents from cache
+		rowReader, readCloser := cache.readRows()
+		done := false
+		for !done {
+			// add documents to matrix
+			documentQuantizedMatrix := make([][]uint8, config.BATCH_SIZE_CACHE)
+			for idx := range config.BATCH_SIZE_CACHE {
+				_, vector := rowReader()
+				if vector == nil {
+					documentQuantizedMatrix = documentQuantizedMatrix[:idx] // trim the slice to remove nil values
+					done = true
+					break
+				}
+				documentQuantizedMatrix[idx] = vector
 			}
 			matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
 
@@ -91,22 +105,17 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 
 			// accumulate vectors and count documents for new centroids
 			for idx, centroidIdx := range centroidIdList {
-				documentVector := compute.DequantizeVector(documents[idx].Vector, -1, 1)
+				documentVector := compute.DequantizeVector(documentQuantizedMatrix[idx], -1, 1)
 				for j, val := range documentVector {
 					newCentroidsSumVectors[centroidIdx][j] += val
 				}
 				newCentroidsDocumentCount[centroidIdx]++
 			}
 
-			bar.Add(len(documents))
-			return nil
-		}).Error
-		if err == nil {
-		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return err
-		} else {
-			return errors.Join(errors.New("failed to calculate nearest centroids for documents"), err)
+			// update progress bar
+			bar.Add(len(documentQuantizedMatrix))
 		}
+		readCloser()
 
 		// calculate mean vectors for new centroids
 		for idx, count := range newCentroidsDocumentCount {

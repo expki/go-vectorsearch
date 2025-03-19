@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
@@ -22,6 +23,21 @@ type Database struct {
 }
 
 func New(appCtx context.Context, cfg config.Database) (db *Database, err error) {
+	// clear cache
+	files, err := os.ReadDir(cfg.Cache)
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to read cache directory"), err)
+	}
+	for _, file := range files {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".cache" {
+			filePath := filepath.Join(cfg.Cache, file.Name())
+			err := os.Remove(filePath)
+			if err != nil {
+				logger.Sugar().Warn("Failed to delete cache file", filePath)
+			}
+		}
+	}
+
 	// create logger
 	glogger := glog.New(log.New(os.Stdout, "\r\n", log.LstdFlags), glog.Config{
 		SlowThreshold:             30 * time.Second,
