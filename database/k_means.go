@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"math"
+	"math/rand/v2"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
@@ -25,7 +27,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	} else {
 		return errors.Join(errors.New("failed to count documents"), err)
 	}
-	k := int(math.Ceil(float64(countDocuments) / float64(config.MAX_CENTROID_SIZE)))
+	k := int(math.Ceil(float64(countDocuments) / float64(config.CENTROID_SIZE)))
 
 	// Get current centroids
 	var centroids []Centroid
@@ -40,34 +42,45 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		return nil
 	}
 
-	// Add new random centroids
-	var randomDocuments []Document
-	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("vector").Order("RANDOM()").Limit(k - len(centroids)).Find(&randomDocuments).Error
-	if err == nil {
-	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-		return
-	} else {
-		return errors.Join(errors.New("failed to get random documents"), err)
-	}
-	for _, doc := range randomDocuments {
-		centroids = append(centroids, Centroid{
-			Vector:     doc.Vector,
-			CategoryID: categoryID,
-		})
-	}
-
-	// convert centroids to matrix
-	matrixQuantizedCentroids := make([][]uint8, k)
-	for idx, centroid := range centroids {
-		matrixQuantizedCentroids[idx] = centroid.Vector
-	}
-
 	// create cache of documents
 	cache, err := d.newCache(appCtx, categoryID)
 	if err != nil {
 		return errors.Join(errors.New("failed to create cache"), err)
 	}
 	defer cache.Close()
+
+	// Add new random centroids
+	randomIndexSet := make(map[int]bool, k-len(centroids))
+	randomIndexList := make([]int, 0, k-len(centroids))
+	for len(randomIndexList) < k-len(centroids) {
+		randomIndex := rand.IntN(cache.total)
+		if _, exists := randomIndexSet[randomIndex]; !exists {
+			randomIndexSet[randomIndex] = true
+			randomIndexList = append(randomIndexList, randomIndex)
+		}
+	}
+	sort.Ints(randomIndexList)
+	rowReader, closeReader := cache.readRows()
+	var currentIndex int = 0
+	for _, vectorIndex := range randomIndexList {
+		for currentIndex < vectorIndex {
+			rowReader()
+			currentIndex++
+		}
+		newCentroid := Centroid{
+			Vector:     rowReader(),
+			CategoryID: categoryID,
+		}
+		currentIndex++
+		centroids = append(centroids, newCentroid)
+	}
+	closeReader()
+
+	// convert centroids to matrix
+	matrixQuantizedCentroids := make([][]uint8, k)
+	for idx, centroid := range centroids {
+		matrixQuantizedCentroids[idx] = centroid.Vector
+	}
 
 	// create new cosine similarity graph
 	cosineSimiarity, closeGraph := compute.MatrixCosineSimilarity()
@@ -95,7 +108,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 			// add documents to matrix
 			documentQuantizedMatrix := make([][]uint8, config.BATCH_SIZE_CACHE)
 			for idx := range config.BATCH_SIZE_CACHE {
-				_, vector := rowReader()
+				vector := rowReader()
 				if vector == nil {
 					documentQuantizedMatrix = documentQuantizedMatrix[:idx] // trim the slice to remove nil values
 					done = true

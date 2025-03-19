@@ -3,7 +3,6 @@ package database
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -58,17 +57,14 @@ func (d *Database) newCache(ctx context.Context, categoryID uint64) (*cache, err
 	}
 
 	// buffer writes
-	encoderBuffer := bufio.NewWriterSize(encoder, (8+vectorSize)*config.BATCH_SIZE_DATABASE)
+	encoderBuffer := bufio.NewWriterSize(encoder, vectorSize*config.BATCH_SIZE_DATABASE)
 
 	// retrieve documents in batches
 	var documents []Document
 	err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "vector").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 		// write documents to cache file
 		for _, document := range documents {
-			row := make([]byte, 8+vectorSize)
-			binary.LittleEndian.PutUint64(row[:8], document.ID)
-			copy(row[8:], document.Vector)
-			encoderBuffer.Write(row)
+			encoderBuffer.Write(document.Vector)
 			c.total++
 		}
 		return nil
@@ -90,7 +86,7 @@ func (d *Database) newCache(ctx context.Context, categoryID uint64) (*cache, err
 	return c, nil
 }
 
-func (c *cache) readRows() (rowReader func() (id uint64, vector []uint8), closeRowReader func()) {
+func (c *cache) readRows() (rowReader func() (vector []uint8), closeRowReader func()) {
 	c.lock.Lock()
 
 	// move to start of cache file
@@ -106,21 +102,19 @@ func (c *cache) readRows() (rowReader func() (id uint64, vector []uint8), closeR
 	}
 
 	// Buffer read
-	decoderBuffer := bufio.NewReaderSize(decoder, (8+c.vectorSize)*config.BATCH_SIZE_CACHE)
+	decoderBuffer := bufio.NewReaderSize(decoder, c.vectorSize*config.BATCH_SIZE_CACHE)
 
 	// read the data
-	return func() (id uint64, vector []uint8) {
-			row := make([]byte, 8+c.vectorSize) // id + vector
-			_, err := io.ReadFull(decoderBuffer, row)
+	return func() (vector []uint8) {
+			vector = make([]uint8, c.vectorSize)
+			_, err := io.ReadFull(decoderBuffer, vector)
 			if err == io.EOF {
-				return 0, nil
+				return nil
 			}
 			if err != nil {
 				logger.Sugar().Fatalf("Failed to read full id from zstd cache decoder: %v", err)
 			}
-			id = binary.LittleEndian.Uint64(row[:8])
-			vector = row[8:]
-			return id, vector
+			return vector
 		}, func() {
 			decoder.Close()
 			c.lock.Unlock()
