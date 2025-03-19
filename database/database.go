@@ -23,6 +23,11 @@ type Database struct {
 }
 
 func New(appCtx context.Context, cfg config.Database) (db *Database, err error) {
+	// ensure cache directory exists
+	if err := os.MkdirAll(cfg.Cache, 0755); err != nil {
+		return nil, errors.Join(errors.New("failed to create cache directory"), err)
+	}
+
 	// clear cache
 	files, err := os.ReadDir(cfg.Cache)
 	if err != nil {
