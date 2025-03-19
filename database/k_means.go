@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
@@ -148,6 +149,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	// Update centroid vectors
 	for idx, vector := range matrixQuantizedCentroids {
 		centroids[idx].Vector = vector
+		centroids[idx].LastUpdated = time.Now()
 	}
 
 	// Save new centroids in database

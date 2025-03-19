@@ -71,6 +71,7 @@ func (s *Server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to initialize chat", http.StatusInternalServerError)
 		return
 	}
+	defer resStream.Close()
 	_, err = io.Copy(w, resStream)
 	if err != nil {
 		http.Error(w, "Failed to stream response", http.StatusInternalServerError)
