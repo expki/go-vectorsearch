@@ -39,9 +39,9 @@ type SearchResponse struct {
 
 type DocumentSearch struct {
 	DocumentUpload
-	DocumentID                 uint64  `json:"document_id"`
-	RelativeDocumentSimilarity float32 `json:"relative_document_similarity"`
-	RelativeCentroidSimilarity float32 `json:"relative_centroid_similarity"`
+	DocumentID         uint64  `json:"document_id"`
+	DocumentSimilarity float32 `json:"document_similarity"`
+	CentroidSimilarity float32 `json:"centroid_similarity"`
 }
 
 func (s *Server) SearchHttp(w http.ResponseWriter, r *http.Request) {
@@ -193,16 +193,17 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Find closest centroids to embedding
-	matrixCentroids := make([][]uint8, len(centroids))
-	for idx, centroid := range centroids {
-		matrixCentroids[idx] = centroid.Vector
-	}
 	type centroidSimilarity struct {
 		centroid   database.Centroid
 		similarity float32
 	}
-	closestCentroids := make([]centroidSimilarity, len(matrixCentroids))
-	for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrixCentroids)) {
+	closestCentroids := make([]centroidSimilarity, len(centroids))
+	// Convert centroids to matrix format for cosine similarity calculation
+	matrixCentroids := make([][]uint8, len(centroids))
+	for idx, centroid := range centroids {
+		matrixCentroids[idx] = centroid.Vector
+	}
+	for idx, similarity := range target.Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixCentroids)) {
 		closestCentroids[idx] = centroidSimilarity{
 			centroid:   centroids[idx],
 			similarity: similarity,
@@ -212,6 +213,10 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		return cmp.Compare(b.similarity, a.similarity)
 	})
 	closestCentroids = closestCentroids[:min(req.Centroids, len(closestCentroids))]
+
+	// create new cosine similarity graph
+	cosineSimilarity, closeGraph := compute.VectorMatrixCosineSimilarity()
+	defer closeGraph()
 
 	// For each centroid, find the closest documents to the embedding
 	type documentSimilarity struct {
@@ -225,13 +230,12 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		// Find centroid documents in batches
 		var documents []database.Document
 		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("centroid_id = ?", centroid.centroid.ID).Select("vector", "id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
-			// Find closest documents to the embedding
+			// Find nearest documents to the embedding
 			matrixDocuments := make([][]uint8, len(documents))
 			for idx, document := range documents {
 				matrixDocuments[idx] = document.Vector
 			}
-			// TODO: pretty sure the similarity of different batches cannot be directly compared since it is the relative similarity to the batch being calculated.
-			for idx, similarity := range target.CosineSimilarity(compute.NewMatrix(matrixDocuments)) {
+			for idx, similarity := range cosineSimilarity(target.Clone(), compute.NewMatrix(matrixDocuments)) {
 				closestDocuments = append(closestDocuments, documentSimilarity{
 					centroidSimilarity: &centroid,
 					document:           documents[idx],
@@ -288,9 +292,9 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 				ExternalID: item.document.ExternalID,
 				Document:   item.document.Document.JSON(),
 			},
-			DocumentID:                 item.document.ID,
-			RelativeDocumentSimilarity: item.similarity,
-			RelativeCentroidSimilarity: item.centroidSimilarity.similarity,
+			DocumentID:         item.document.ID,
+			DocumentSimilarity: item.similarity,
+			CentroidSimilarity: item.centroidSimilarity.similarity,
 		}
 	}
 

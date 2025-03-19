@@ -223,7 +223,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	for idx, centroid := range centroids {
 		matrixCentroids[idx] = centroid.Vector
 	}
-	_, centroidIdxList := compute.NewMatrix(matrixCentroids).CosineSimilarity(compute.NewMatrix(matrixEmbeddings))
+	_, centroidIdxList := compute.NewMatrix(matrixCentroids).Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings))
 
 	// Save Documents
 	documents := make([]database.Document, len(embedRes.Embeddings))
