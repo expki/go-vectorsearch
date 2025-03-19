@@ -41,8 +41,8 @@ func (v *Vector) Clone() (clone *Vector) {
 	}
 }
 
-func (m *Matrix) Clone() (clone *Matrix) {
-	return &Matrix{
+func (m *Matrix) Clone() (clone Matrix) {
+	return Matrix{
 		Dense: m.Dense.Clone().(*tensor.Dense),
 		Shape: m.Shape,
 	}

@@ -68,6 +68,10 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	}
 	defer cache.Close()
 
+	// create new cosine similarity graph
+	cosineSimiarity, closeGraph := compute.MatrixCosineSimilarity()
+	defer closeGraph()
+
 	// Loop until convergence
 	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
@@ -101,7 +105,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 			matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
 
 			// calculate nearest centroids for each document
-			_, centroidIdList := matrixCentroids.Clone().CosineSimilarity(matrixDocuments)
+			_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixDocuments)
 
 			// accumulate vectors and count documents for new centroids
 			for idx, centroidIdx := range centroidIdList {
@@ -168,7 +172,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
 
 		// calculate nearest centroids for each document
-		_, centroidIdList := matrixCentroids.Clone().CosineSimilarity(matrixDocuments)
+		_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixDocuments)
 
 		// assign documents to new centroids
 		centroidDocuments := make([][]uint64, k)
