@@ -27,7 +27,7 @@ func CreateSample(path string) error {
 			Chat:     "llama3.2",
 		},
 		Database: Database{
-			Sqlite: "./vectors.db",
+			Sqlite: "./vectorstore.db",
 			Cache:  "./cache",
 		},
 		LogLevel: LogLevelInfo,

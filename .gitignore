@@ -1,5 +1,4 @@
 build/
 cache/
-*.json
-*.db
-*.prof
+config.json
+vectorstore.db
