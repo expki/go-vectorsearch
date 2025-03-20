@@ -159,11 +159,13 @@ func main() {
 		})
 	}
 
-	// Routes
-	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(static.Files)))))
+	// Routes: API
 	mux.Handle("/api/upload", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.UploadHttp)))))
 	mux.Handle("/api/search", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.SearchHttp)))))
 	mux.Handle("/api/chat", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.ChatHttp))))
+
+	// Routes: Static
+	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(static.Files)))))
 
 	// Start servers
 	serverDone := make(chan struct{})

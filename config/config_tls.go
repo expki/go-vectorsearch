@@ -225,7 +225,7 @@ func generateCertificateECDSA(dns []string, ip []net.IP) (certificate tls.Certif
 // generateCertificateRSA generates a new RSA certificate.
 func generateCertificateRSA(dns []string, ip []net.IP) (certificate tls.Certificate, err error) {
 	// gernerate private key
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return certificate, errors.Join(errors.New("could not generate rsa key"), err)
 	}
