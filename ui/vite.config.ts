@@ -16,5 +16,6 @@ export default defineConfig({
   build: {
     outDir: '../static',
     emitAssets: false,
+    cssCodeSplit: false,
   },
 })
