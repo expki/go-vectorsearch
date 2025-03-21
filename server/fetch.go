@@ -12,6 +12,7 @@ import (
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
+	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -102,6 +103,8 @@ func (s *Server) FetchCategoryNames(ctx context.Context, owner string) (category
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return nil, err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return []string{}, nil
 	} else {
 		return nil, errors.Join(errors.New("get owner exception"), err)
 	}

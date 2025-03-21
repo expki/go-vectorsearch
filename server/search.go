@@ -297,6 +297,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			CentroidSimilarity: item.centroidSimilarity.similarity,
 		}
 	}
+	res.Documents = res.Documents[:len(closestDocuments)]
 
 	return res, nil
 }

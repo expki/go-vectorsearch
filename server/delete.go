@@ -12,6 +12,7 @@ import (
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
+	"gorm.io/gorm"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -215,6 +216,8 @@ func (s *Server) DeleteOwner(ctx context.Context, owner string) (err error) {
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("delete owner exception"), err)
 	}
@@ -227,6 +230,8 @@ func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (er
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("get owner exception"), err)
 	}
@@ -234,6 +239,8 @@ func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (er
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("delete category exception"), err)
 	}
@@ -246,6 +253,8 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("get owner exception"), err)
 	}
@@ -254,6 +263,8 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("get category exception"), err)
 	}
@@ -261,6 +272,8 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
 	} else {
 		return errors.Join(errors.New("delete category exception"), err)
 	}

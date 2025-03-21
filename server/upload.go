@@ -118,7 +118,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	flattenedFiles := make([]string, len(req.Documents))
 	information := make([]string, len(req.Documents))
 	for idx, file := range req.Documents {
-		info := Flatten(file)
+		info := Flatten(file.Document)
 		flattenedFiles[idx] = info
 		if req.Prefix != "" {
 			info = fmt.Sprintf(`%s. %s`, req.Prefix, info)
@@ -229,7 +229,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	documents := make([]database.Document, len(embedRes.Embeddings))
 	for idx, embedding := range matrixEmbeddings {
 		centroid := centroids[centroidIdxList[idx]]
-		file, _ := json.Marshal(req.Documents[idx])
+		file, _ := json.Marshal(req.Documents[idx].Document)
 		embedding := database.Document{
 			ExternalID:  req.Documents[idx].ExternalID,
 			Vector:      embedding,
