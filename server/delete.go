@@ -235,7 +235,7 @@ func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (er
 	} else {
 		return errors.Join(errors.New("get owner exception"), err)
 	}
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("owner_id = ? AND name = ?", ownerDetails.ID, category).Delete(&database.Category{}, category).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("owner_id = ? AND name = ?", ownerDetails.ID, category).Delete(&database.Category{}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -268,7 +268,7 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	} else {
 		return errors.Join(errors.New("get category exception"), err)
 	}
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("category_id = ? AND name = ?", categoryDetails.ID, category).Delete(&database.Document{}, category).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("category_id = ? AND id = ?", categoryDetails.ID, documentID).Delete(&database.Document{}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
