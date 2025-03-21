@@ -164,6 +164,11 @@ func main() {
 	mux.Handle("/api/search", middlewareHeaders(middlewareDecompression(middlewareCompression(http.HandlerFunc(srv.SearchHttp)))))
 	mux.Handle("/api/chat", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.ChatHttp))))
 
+	mux.Handle("/api/categories", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.FetchCategoryNamesHttp))))
+	mux.Handle("/api/delete/owner", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.DeleteOwnerHttp))))
+	mux.Handle("/api/delete/category", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.DeleteCategoryHttp))))
+	mux.Handle("/api/delete/document", middlewareHeaders(middlewareDecompression(http.HandlerFunc(srv.DeleteDocumentHttp))))
+
 	// Routes: Static
 	mux.Handle("/", middlewareHeaders(middlewareDecompression(middlewareCompression(http.FileServerFS(static.Files)))))
 
