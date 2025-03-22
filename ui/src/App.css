@@ -162,3 +162,7 @@ body {
 .text-muted {
   color: #adb5bd !important;
 }
+
+.space-right {
+  margin-right: 0.7rem;
+}

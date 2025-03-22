@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { Form, Card, Table, Button, Row, Col, Spinner } from 'react-bootstrap';
 
-import { Search } from './api/search';
+import { Search as ApiSearch } from './api/search';
 import { DeleteDocument } from './api/delete';
+import { Chat } from './api/chat';
 
 type Props = {
   owner: string,
   category: string,
 }
 
-function App({ owner, category }: Props) {
+function Search({ owner, category }: Props) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<Array<result>>([]);
   const [searching, setSearching] = useState<boolean>(false);
 
   const handleSearch = () => {
     setSearching(true);
-    Search({
+    ApiSearch({
       owner: owner,
       category: category,
       prefix: category,
@@ -93,28 +94,7 @@ function App({ owner, category }: Props) {
             <Table variant="dark" className="border-secondary">
               <tbody>
                 {searchResults.map((result) => (
-                  <tr key={result.id}>
-                    <td>
-                      <div className="search-result p-2 rounded-3">
-                        <Row>
-                          <Col>
-                            <h5 className="text-primary">{result.title}</h5>
-                          </Col>
-                          <Col xs="auto">
-                            <Button 
-                              variant="outline-danger" 
-                              size="sm" 
-                              className="rounded-circle"
-                              onClick={() => handleDeleteDocument(result.id)}
-                            >
-                              X
-                            </Button>
-                          </Col>
-                        </Row>
-                        <p className="mb-0">{result.description}</p>
-                      </div>
-                    </td>
-                  </tr>
+                  <Result key={result.id} details={result} handleDeleteDocument={handleDeleteDocument} />
                 ))}
               </tbody>
             </Table>
@@ -125,10 +105,66 @@ function App({ owner, category }: Props) {
   );
 }
 
-export default App;
+export default Search;
 
 type result = {
   id: number,
   title: string,
   description: string,
+}
+
+function Result({ details, handleDeleteDocument }: { details: result, handleDeleteDocument: (id: number) => void }) {
+  const [summaryEnabled, setSummaryEnabled] = useState<boolean>(false);
+  const [summary, setSummary] = useState<string | undefined>(undefined);
+  const [loading, setLoading] = useState<boolean>(false);
+  
+  const handleSummaryToggle = () => {
+    const enabled = summaryEnabled;
+    setSummaryEnabled(!summaryEnabled);
+    if (!enabled && !summary) {
+      setLoading(true);
+      Chat(
+        {
+          text: 'Write a summary paragraph',
+          document_ids:[details.id],
+        },
+        (text: string) => setSummary(text),
+        () => setLoading(false),
+      );
+    }
+  }
+
+  return (
+    <tr>
+      <td>
+        <div className="search-result p-2 rounded-3">
+          <Row>
+            <Col>
+              <h5 className="text-primary">{details.title}</h5>
+            </Col>
+            <Col xs="auto">
+              <Button 
+                variant={summaryEnabled ? "primary" : "outline-primary"}
+                size="sm" 
+                className="space-right"
+                onClick={() => handleSummaryToggle()}
+                disabled={loading}
+              >
+                AI
+              </Button>
+              <Button 
+                variant="outline-danger" 
+                size="sm" 
+                className="rounded-circle"
+                onClick={() => handleDeleteDocument(details.id)}
+              >
+                X
+              </Button>
+            </Col>
+          </Row>
+          <p className="mb-0">{summaryEnabled ? summary : details.description}</p>
+        </div>
+      </td>
+    </tr>
+  );
 }

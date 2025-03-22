@@ -45,7 +45,7 @@ export async function DeleteCategory(owner: string, category: string): Promise<v
 
 export async function DeleteDocument(owner: string, category: string, documentID: number): Promise<void> {
   try {
-    const response = await fetch('/api/delete/category', {
+    const response = await fetch('/api/delete/document', {
       method: 'POST',
       headers: {
         'Accept': 'application/json',

@@ -6,7 +6,7 @@ export type ChatRequest = {
 	documents?: any[];
 };
 
-export async function Chat(request: ChatRequest, setResponse: (result: string) => void) {
+export async function Chat(request: ChatRequest, setResponse: (result: string) => void, completed: () => void): Promise<void> {
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
@@ -33,9 +33,10 @@ export async function Chat(request: ChatRequest, setResponse: (result: string) =
 
       setResponse(result);
     }
-
   } catch (err) {
     console.error("Error starting chat stream:", err);
     setResponse(String(err));
+  } finally {
+    completed();
   }
 }

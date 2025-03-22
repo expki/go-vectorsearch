@@ -268,14 +268,14 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	} else {
 		return errors.Join(errors.New("get category exception"), err)
 	}
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("category_id = ? AND id = ?", categoryDetails.ID, documentID).Delete(&database.Document{}).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("category_id = ?", categoryDetails.ID).Delete(&database.Document{}, documentID).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	} else {
-		return errors.Join(errors.New("delete category exception"), err)
+		return errors.Join(errors.New("delete document exception"), err)
 	}
 	return nil
 }
