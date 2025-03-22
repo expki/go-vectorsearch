@@ -1,5 +1,5 @@
 import { useState, ChangeEvent, DragEvent, useRef } from 'react';
-import { Form, Button, ListGroup, Card, Tabs, Tab } from 'react-bootstrap';
+import { Form, Button, ListGroup, Card, Tabs, Tab, Spinner } from 'react-bootstrap';
 
 import { Upload, DocumentUpload } from './api/upload';
 import decodeDocx from './tools/doc';
@@ -11,12 +11,12 @@ type Props = {
 }
 
 function Content({ owner, category }: Props) {
-  category
   // File upload states
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [directText, setDirectText] = useState<string>('');
   const [activeUploadTab, setActiveUploadTab] = useState<string>('direct-input');
+  const [uploading, setUploading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // File upload handlers
@@ -60,6 +60,7 @@ function Content({ owner, category }: Props) {
   };
   
   const handleProcessFiles = async () => {
+    setUploading(true);
     // In a real app, this would process the files or direct text
     console.log("Processing files:", uploadedFiles);
     console.log("Processing direct text:", directText);
@@ -77,11 +78,11 @@ function Content({ owner, category }: Props) {
       let documents: Array<DocumentUpload> = [];
       for (let file of uploadedFiles) {
         if (file.name.endsWith('.pdf')) {
-          documents.push({document: await decodePdf(file)});
+          documents.push({document: (await decodePdf(file)).substring(0, 5000)});
         } else if (file.name.endsWith('.docx')) {
-          documents.push({document: await decodeDocx(file)});
+          documents.push({document: (await decodeDocx(file)).substring(0, 5000)});
         } else {
-          documents.push({document: await file.text()});
+          documents.push({document: (await file.text()).substring(0, 5000)});
         }
       }
       Upload({
@@ -92,6 +93,8 @@ function Content({ owner, category }: Props) {
       }).then(() => console.log(`${uploadedFiles.length} file(s) processed`));
       setUploadedFiles([]);
     }
+    
+    setUploading(false);
   };
 
   return (
@@ -131,6 +134,7 @@ function Content({ owner, category }: Props) {
                 <Form.Control
                   type="file"
                   ref={fileInputRef}
+                  accept=".txt,.pdf,.doc"
                   onChange={handleFileChange}
                   multiple
                   className="d-none"
@@ -187,10 +191,19 @@ function Content({ owner, category }: Props) {
           variant="primary" 
           className="w-100 rounded-3 mt-2"
           onClick={handleProcessFiles}
-          disabled={(activeUploadTab === "drag-drop" && uploadedFiles.length === 0) || 
-                    (activeUploadTab === "direct-input" && directText.trim() === "")}
+          disabled={
+            uploading ||
+            (activeUploadTab === "drag-drop" && uploadedFiles.length === 0) || 
+            (activeUploadTab === "direct-input" && directText.trim() === "")
+          }
         >
-          Process Content
+          {uploading ?
+            <Spinner animation="border" role="status">
+              <span className="visually-hidden">Uploading...</span>
+            </Spinner>
+            : 
+            <>Upload</>
+          }
         </Button>
       </Card.Body>
     </Card>

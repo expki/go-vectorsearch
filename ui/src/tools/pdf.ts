@@ -1,4 +1,5 @@
 import * as pdfjsLib from "pdfjs-dist";
+import "pdfjs-dist/build/pdf.worker.mjs";
 
 export default async function extractTextFromPDF(file: File): Promise<string> {
     const reader = new FileReader();

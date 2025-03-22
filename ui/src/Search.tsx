@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Card, Table, Button, Row, Col } from 'react-bootstrap';
+import { Form, Card, Table, Button, Row, Col, Spinner } from 'react-bootstrap';
 
 import { Search } from './api/search';
 import { DeleteDocument } from './api/delete';
@@ -12,8 +12,10 @@ type Props = {
 function App({ owner, category }: Props) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<Array<result>>([]);
+  const [searching, setSearching] = useState<boolean>(false);
 
   const handleSearch = () => {
+    setSearching(true);
     Search({
       owner: owner,
       category: category,
@@ -28,6 +30,7 @@ function App({ owner, category }: Props) {
         description: String(document.document),
       }));
       setSearchResults(results);
+      setSearching(false);
     });
   };
 
@@ -65,8 +68,15 @@ function App({ owner, category }: Props) {
                 variant="primary" 
                 className="w-100 rounded-3 mt-2"
                 onClick={handleSearch}
+                disabled={searching}
               >
-                Search
+                {searching ?
+                  <Spinner animation="border" role="status">
+                    <span className="visually-hidden">Searching...</span>
+                  </Spinner>
+                  : 
+                  <>Search</>
+                }
               </Button>
             </Form.Group>
           </Form>
