@@ -2,6 +2,8 @@ import { useState, ChangeEvent, DragEvent, useRef } from 'react';
 import { Form, Button, ListGroup, Card, Tabs, Tab } from 'react-bootstrap';
 
 import { Upload, DocumentUpload } from './api/upload';
+import decodeDocx from './tools/doc';
+import decodePdf from './tools/pdf';
 
 type Props = {
   owner: string,
@@ -74,9 +76,13 @@ function Content({ owner, category }: Props) {
     } else if (uploadedFiles.length > 0) {
       let documents: Array<DocumentUpload> = [];
       for (let file of uploadedFiles) {
-        documents.push({
-          document: await file.text(),
-        });
+        if (file.name.endsWith('.pdf')) {
+          documents.push({document: await decodePdf(file)});
+        } else if (file.name.endsWith('.docx')) {
+          documents.push({document: await decodeDocx(file)});
+        } else {
+          documents.push({document: await file.text()});
+        }
       }
       Upload({
         owner: owner,
@@ -92,6 +98,9 @@ function Content({ owner, category }: Props) {
     <Card bg="dark" text="light" className="rounded-3 border-secondary">
       <Card.Header className="border-secondary">
         <h4>Upload Content</h4>
+        <div className="text-muted mt-2 small">
+          Content is secure to your browser
+        </div>
       </Card.Header>
       <Card.Body>
         <Tabs
