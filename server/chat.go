@@ -23,7 +23,7 @@ type ChatRequest struct {
 	Prefix      string   `json:"prefix,omitempty"`
 	History     []string `json:"history,omitempty"`
 	Text        string   `json:"text"`
-	DocumentIDs []uint   `json:"document_ids,omitempty"`
+	DocumentIDs []uint64 `json:"document_ids,omitempty"`
 	Documents   []any    `json:"documents,omitempty"`
 }
 
@@ -86,7 +86,7 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 	// Get documents
 	var documents []database.Document
 	if len(req.DocumentIDs) > 0 {
-		err = s.db.Clauses(dbresolver.Read).WithContext(ctx).Find(&documents, req.DocumentIDs).Error
+		err = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("document").Find(&documents, req.DocumentIDs).Error
 		if err == nil {
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return nil, err
@@ -124,9 +124,9 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 		}
 		query.WriteString(":\n\n")
 		for _, doc := range req.Documents {
-			query.WriteRune('"')
+			query.WriteString(`"""`)
 			query.WriteString(Flatten(doc))
-			query.WriteRune('"')
+			query.WriteString(`"""`)
 			query.WriteRune('\n')
 		}
 		query.WriteRune('\n')
