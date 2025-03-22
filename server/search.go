@@ -116,6 +116,7 @@ func (s *Server) SearchHttp(w http.ResponseWriter, r *http.Request) {
 // Search for a previously uploaded embedding vector in the database and return similar documents.
 func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchResponse, err error) {
 	req.Count = max(1, min(req.Count, 20))
+	req.Offset = max(0, req.Offset)
 	if req.Centroids == 0 {
 		req.Centroids = 1
 	} else if req.Centroids < 0 {
@@ -286,8 +287,15 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Create response
 	res.Documents = make([]DocumentSearch, req.Count)
+	skipCount := 0
+	addCount := 0
 	for idx, item := range closestDocuments {
-		res.Documents[idx] = DocumentSearch{
+		if uint(idx) < req.Offset {
+			skipCount++
+			continue
+		}
+		addCount++
+		res.Documents[idx-skipCount] = DocumentSearch{
 			DocumentUpload: DocumentUpload{
 				ExternalID: item.document.ExternalID,
 				Document:   item.document.Document.JSON(),
@@ -297,7 +305,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			CentroidSimilarity: item.centroidSimilarity.similarity,
 		}
 	}
-	res.Documents = res.Documents[:len(closestDocuments)]
+	res.Documents = res.Documents[:addCount]
 
 	return res, nil
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Form, Card, Table, Button, Row, Col, Spinner } from 'react-bootstrap';
 
 import { Search as ApiSearch } from './api/search';
@@ -12,17 +12,29 @@ type Props = {
 
 function Search({ owner, category }: Props) {
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<Array<result>>([]);
+  const [searchResults, setSearchResults] = useState<Array<result>|undefined>(undefined);
   const [searching, setSearching] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 3;
 
-  const handleSearch = () => {
+  useEffect(() => {
+    setSearchResults(undefined);
+  }, [category]);
+
+  const handlePressSearch = () => {
+    setCurrentPage(1);
+    handleSearch(itemsPerPage, 0);
+  }
+
+  const handleSearch = (count: number, offset: number) => {
     setSearching(true);
     ApiSearch({
       owner: owner,
       category: category,
       prefix: category,
       text: searchQuery.trim(),
-      count: 3,
+      count: count,
+      offset: offset,
     }).then((res) => {
       const documents = res?.documents ?? [];
       const results: Array<result> = documents.map((document, idx) => ({
@@ -35,9 +47,22 @@ function Search({ owner, category }: Props) {
     });
   };
 
+  const handleNext = () => {
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    handleSearch(itemsPerPage, (nextPage - 1) * itemsPerPage);
+  }
+
+  const handlePrevious = () => {
+    const previousPage = currentPage - 1;
+    if (previousPage <= 0) return;
+    setCurrentPage(previousPage);
+    handleSearch(itemsPerPage, (previousPage - 1) * itemsPerPage);
+  }
+
   const handleDeleteDocument = (documentID: number) => {
     DeleteDocument(owner, category, documentID);
-    const updatedSearchResults = [...searchResults].filter((item) => item.id !== documentID);
+    const updatedSearchResults = [...(searchResults ?? [])].filter((item) => item.id !== documentID);
     setSearchResults(updatedSearchResults);
   }
 
@@ -58,7 +83,7 @@ function Search({ owner, category }: Props) {
                     return;
                   }
                   e.preventDefault();
-                  handleSearch();
+                  handlePressSearch();
                 }}
                 className="form-control-lg bg-dark text-light rounded-3 border-secondary"
               />
@@ -68,7 +93,7 @@ function Search({ owner, category }: Props) {
               <Button 
                 variant="primary" 
                 className="w-100 rounded-3 mt-2"
-                onClick={handleSearch}
+                onClick={handlePressSearch}
                 disabled={searching}
               >
                 {searching ?
@@ -85,7 +110,7 @@ function Search({ owner, category }: Props) {
       </Card>
       
       {/* Search Results */}
-      {searchResults.length > 0 && (
+      {searchResults !== undefined && (
         <Card bg="dark" text="light" className="rounded-3 border-secondary mb-4">
           <Card.Header className="border-secondary">
             <h4>Search Results</h4>
@@ -93,11 +118,35 @@ function Search({ owner, category }: Props) {
           <Card.Body>
             <Table variant="dark" className="border-secondary">
               <tbody>
-                {searchResults.map((result) => (
+                {(searchResults ?? []).map((result) => (
                   <Result key={result.id} details={result} handleDeleteDocument={handleDeleteDocument} />
                 ))}
               </tbody>
             </Table>
+            <div className="d-flex justify-content-between align-items-center mt-3">
+              <div className="text-muted">
+                Showing page {currentPage} results
+              </div>
+              <div>
+                <Button
+                  variant="outline-primary"
+                  size="sm"
+                  className="me-2"
+                  onClick={() => handlePrevious()}
+                  disabled={currentPage <= 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline-primary"
+                  size="sm"
+                  onClick={() => handleNext()}
+                  disabled={searchResults.length !== itemsPerPage}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </Card.Body>
         </Card>
       )}
