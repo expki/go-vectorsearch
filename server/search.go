@@ -279,7 +279,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	for _, document := range documents {
 		for idx, item := range closestDocuments {
 			if item.document.ID == document.ID {
-				closestDocuments[idx].document.Document = document.Document
+				closestDocuments[idx].document = document
 				break
 			}
 		}
