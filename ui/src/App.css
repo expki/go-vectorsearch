@@ -67,6 +67,11 @@ body {
   box-shadow: 0 0 0 0.25rem rgba(66, 70, 73, 0.5) !important;
 }
 
+.form-control::placeholder {
+  opacity: 0.3;
+  color: white;
+}
+
 /* List group */
 .list-group-item {
   background-color: #2c2c2c !important;
