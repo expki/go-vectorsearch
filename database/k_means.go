@@ -15,6 +15,7 @@ import (
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -39,7 +40,18 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	} else {
 		return errors.Join(errors.New("failed to get current centroids"), err)
 	}
-	if len(centroids) >= k { // already have enough centroids
+
+	// Remove small centroids
+	centroids, err = dropSmallCentroids(appCtx, d, centroids)
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return err
+	} else {
+		return errors.Join(errors.New("failed to get drop small centroids"), err)
+	}
+
+	// Check if we already have enough centroids
+	if len(centroids) >= k {
 		return nil
 	}
 
@@ -231,4 +243,150 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	}
 
 	return nil
+}
+
+func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) (keepCentroids []Centroid, err error) {
+	if len(centroids) == 0 {
+		return centroids, nil
+	}
+	// seperate centroids by keep and disgard
+	keepCentroids = make([]Centroid, 0, len(centroids)-1)
+	dropCentroids := make([]Centroid, 0, len(centroids)-1)
+	for _, centroid := range centroids {
+		// Get number of document in centroid
+		var centroidDocuments int64
+		err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Model(&Document{}).Where("centroid_id = ?", centroid.ID).Count(&centroidDocuments).Error
+		if err == nil {
+		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			return nil, err
+		} else {
+			return nil, errors.Join(errors.New("failed to count document for centroid"), err)
+		}
+		// Check size is suffiecient
+		if centroidDocuments >= (config.CENTROID_SIZE / 10) {
+			keepCentroids = append(keepCentroids, centroid)
+		} else {
+			dropCentroids = append(dropCentroids, centroid)
+		}
+	}
+	if len(dropCentroids) == 0 || len(keepCentroids) == 0 {
+		return centroids, nil
+	}
+
+	// convert centroids to matrix
+	matrixQuantizedKeepCentroids := make([][]uint8, len(keepCentroids))
+	for idx, centroid := range keepCentroids {
+		matrixQuantizedKeepCentroids[idx] = centroid.Vector
+	}
+	matrixKeepCentroids := compute.NewMatrix(matrixQuantizedKeepCentroids)
+
+	// create new cosine similarity graph
+	cosineSimiarity, closeGraph := compute.MatrixCosineSimilarity()
+	defer closeGraph()
+
+	// drop centroids
+	bar := progressbar.Default(int64(len(dropCentroids)), "Dropping small centroids")
+	defer bar.Close()
+	for _, centroid := range dropCentroids {
+		err = func(centroid Centroid) error {
+			// lock dropping centroids to prevent adding documents to centroid
+			tx := d.WithContext(ctx).Clauses(dbresolver.Write)
+			if d.provider == config.DatabaseProvider_PostgreSQL {
+				tx = tx.Clauses(clause.Locking{
+					Strength: "UPDATE",
+					Table:    clause.Table{Name: clause.CurrentTable},
+				}).Begin()
+			}
+			err = tx.First(&centroid, "id = ?", centroid.ID).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return err
+			} else {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return errors.Join(errors.New("failed to retrieve the centroid to drop"), err)
+			}
+
+			// reassign centroid documents
+			var documents []Document
+			err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Where("centroid_id = ?", centroid.ID).Select("id", "vector", "centroid_id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+				// convert documents to matrix
+				documentQuantizedMatrix := make([][]uint8, len(documents))
+				for idx, document := range documents {
+					documentQuantizedMatrix[idx] = document.Vector
+				}
+				matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
+
+				// calculate nearest centroids for each document
+				_, centroidIdList := cosineSimiarity(matrixKeepCentroids.Clone(), matrixDocuments)
+
+				// assign documents to new centroids
+				centroidDocuments := make([][]uint64, len(keepCentroids))
+				for documentIdx, centroidIdx := range centroidIdList {
+					centroid := centroids[centroidIdx]
+					document := documents[documentIdx]
+					if document.CentroidID == centroid.ID {
+						continue
+					}
+					centroidDocuments[centroidIdx] = append(centroidDocuments[centroidIdx], document.ID)
+				}
+
+				// update document centroids in database
+				for centroidIdx, documentIds := range centroidDocuments {
+					if len(documentIds) == 0 {
+						continue
+					}
+					centroid := keepCentroids[centroidIdx]
+					err = tx.Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
+					if err == nil {
+					} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+						return err
+					} else {
+						return errors.Join(errors.New("failed to update document centroids in database"), err)
+					}
+				}
+				return nil
+			}).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return err
+			} else {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return errors.Join(errors.New("failed to calculate nearest keep centroids for documents"), err)
+			}
+
+			// Drop centroid
+			err = tx.Delete(&centroid).Error
+			if err == nil {
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return err
+			} else {
+				if d.provider == config.DatabaseProvider_PostgreSQL {
+					tx.Rollback()
+				}
+				return errors.Join(errors.New("failed to calculate nearest keep centroids for documents"), err)
+			}
+
+			tx.Commit()
+			return nil
+		}(centroid)
+		if err != nil {
+			return nil, err
+		}
+		bar.Add(1)
+	}
+
+	return keepCentroids, nil
 }
