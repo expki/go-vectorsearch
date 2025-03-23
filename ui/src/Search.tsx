@@ -119,7 +119,7 @@ function Search({ owner, category }: Props) {
             <Table variant="dark" className="border-secondary">
               <tbody>
                 {(searchResults ?? []).map((result) => (
-                  <Result key={result.id} details={result} handleDeleteDocument={handleDeleteDocument} />
+                  <Result key={result.id} details={result} searchQuery={searchQuery} handleDeleteDocument={handleDeleteDocument} />
                 ))}
               </tbody>
             </Table>
@@ -162,7 +162,7 @@ type result = {
   description: string,
 }
 
-function Result({ details, handleDeleteDocument }: { details: result, handleDeleteDocument: (id: number) => void }) {
+function Result({ details, searchQuery, handleDeleteDocument }: { details: result, searchQuery: string, handleDeleteDocument: (id: number) => void }) {
   const [summaryEnabled, setSummaryEnabled] = useState<boolean>(false);
   const [summary, setSummary] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(false);
@@ -174,7 +174,8 @@ function Result({ details, handleDeleteDocument }: { details: result, handleDele
       setLoading(true);
       Chat(
         {
-          text: 'Write a summary paragraph',
+          prefix: searchQuery,
+          text: 'Produce a one paragraph summary on the information, make an educated guess on lack of information',
           document_ids:[details.id],
         },
         (text: string) => setSummary(text),
