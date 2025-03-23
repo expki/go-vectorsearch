@@ -223,7 +223,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 				continue
 			}
 			centroid := centroids[centroidIdx]
-			err = tx.Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
+			err = d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
 			if err == nil {
 			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 				return err
@@ -341,7 +341,7 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 						continue
 					}
 					centroid := keepCentroids[centroidIdx]
-					err = tx.Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
+					err = d.DB.WithContext(ctx).Clauses(dbresolver.Write).Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
 					if err == nil {
 					} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 						return err
@@ -379,7 +379,10 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 				return errors.Join(errors.New("failed to calculate nearest keep centroids for documents"), err)
 			}
 
-			tx.Commit()
+			// Release lock
+			if d.provider == config.DatabaseProvider_PostgreSQL {
+				tx.Commit()
+			}
 			return nil
 		}(centroid)
 		if err != nil {
