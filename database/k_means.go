@@ -47,7 +47,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
 	} else {
-		return errors.Join(errors.New("failed to get drop small centroids"), err)
+		return errors.Join(errors.New("failed to drop small centroids"), err)
 	}
 
 	// Check if we already have enough centroids
