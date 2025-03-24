@@ -101,7 +101,6 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 		}
 	}
 	db = &Database{provider: provider, cfg: cfg, DB: godb}
-	db.refreshCentroids(appCtx) // Initial refresh on startup
 	go db.refreshCentroidJob(appCtx)
 
 	return db, nil

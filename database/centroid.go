@@ -17,6 +17,7 @@ import (
 
 func (d *Database) refreshCentroidJob(appCtx context.Context) {
 	logger.Sugar().Debug("Starting centroid refresh job")
+	d.refreshCentroids(appCtx)
 
 	var lock sync.Mutex
 
