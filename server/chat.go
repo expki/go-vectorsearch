@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,13 @@ func (s *Server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 	logger.Sugar().Debugf("%d chat request started", txid)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Transfer-Encoding", "chunked")
+
+	// Ensure the ResponseWriter supports streaming
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
 
 	// Ensure the request method is POST or GET
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -72,10 +80,25 @@ func (s *Server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resStream.Close()
-	_, err = io.Copy(w, resStream)
-	if err != nil {
-		http.Error(w, "Failed to stream response", http.StatusInternalServerError)
-		return
+	charReader := bufio.NewReader(resStream)
+
+	// Stream the response
+	for {
+		char, _, err := charReader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			http.Error(w, "Error reading stream", http.StatusInternalServerError)
+			return
+		}
+
+		_, writeErr := io.WriteString(w, string(char))
+		if writeErr != nil {
+			return
+		}
+
+		flusher.Flush()
 	}
 
 	logger.Sugar().Infof("%d chat request suceeded (%dms)", txid, time.Since(start).Milliseconds())
