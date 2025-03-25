@@ -149,7 +149,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Get Owner
 	var owner database.Owner
-	result := s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
+	result := s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
 		// owner found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -171,7 +171,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Get Category
 	var category database.Category
-	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
 	if result.Error == nil {
 		// category found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -195,7 +195,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Get Centroids
 	var centroids []database.Centroid
-	result = s.db.Clauses(dbresolver.Write).WithContext(ctx).Where("category_id = ?", category.ID).Find(&centroids)
+	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("category_id = ?", category.ID).Find(&centroids)
 	if result.Error == nil {
 		// centroids found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -244,7 +244,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		}
 		documents[idx] = embedding
 	}
-	tx := s.db.Clauses(dbresolver.Write).WithContext(ctx)
+	tx := s.db.WithContext(ctx).Clauses(dbresolver.Write)
 	if !req.NoUpdate {
 		tx = tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "hash"}, {Name: "category_id"}},
