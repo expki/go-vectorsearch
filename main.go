@@ -77,7 +77,7 @@ func main() {
 
 	// Database
 	logger.Sugar().Info("Loading database...")
-	db, err := database.New(appCtx, cfg.Database)
+	db, err := database.New(appCtx, cfg.Database, true)
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
