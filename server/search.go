@@ -122,11 +122,13 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	} else if req.Centroids < 0 {
 		req.Centroids = math.MaxInt
 	}
+	logger.Sugar().Debug("search request received")
 
 	// Get embedding
 	if req.Prefix != "" {
 		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
 	}
+	logger.Sugar().Debug("embedding search query")
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
 		Model: s.config.Embed,
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
@@ -146,6 +148,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
 
 	// Get Owner
+	logger.Sugar().Debugf("retrieving owner: %s", req.Owner)
 	owner := database.Owner{Name: req.Owner}
 	result := s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
@@ -162,6 +165,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Get Category
+	logger.Sugar().Debugf("retrieving category: %s", req.Category)
 	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
 	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
 	if result.Error == nil {
@@ -178,6 +182,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Get Centroids
+	logger.Sugar().Debug("retrieving centroids")
 	var centroids []database.Centroid
 	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("category_id = ?", category.ID).Select("id", "vector").Find(&centroids)
 	if result.Error == nil {
@@ -204,6 +209,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	for idx, centroid := range centroids {
 		matrixCentroids[idx] = centroid.Vector
 	}
+	logger.Sugar().Debugf("calculate nearest centroids: %d", min(req.Centroids, len(closestCentroids)))
 	for idx, similarity := range target.Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixCentroids)) {
 		closestCentroids[idx] = centroidSimilarity{
 			centroid:   centroids[idx],
@@ -230,6 +236,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	for _, centroid := range closestCentroids[:req.Centroids] {
 		// Find centroid documents in batches
 		var documents []database.Document
+		logger.Sugar().Debugf("calculate centroid %d's nearest documents", centroid.centroid.ID)
 		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("centroid_id = ?", centroid.centroid.ID).Select("vector", "id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
 			// Find nearest documents to the embedding
 			matrixDocuments := make([][]uint8, len(documents))
@@ -266,6 +273,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		ids[idx] = item.document.ID
 	}
 	var documents []database.Document
+	logger.Sugar().Debug("fetching nearest documents")
 	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "external_id", "document").Find(&documents, ids)
 	if result.Error == nil {
 		// success
@@ -286,6 +294,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 
 	// Create response
+	logger.Sugar().Debug("creating response")
 	res.Documents = make([]DocumentSearch, req.Count)
 	skipCount := 0
 	addCount := 0
