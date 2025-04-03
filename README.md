@@ -3,6 +3,14 @@
 ## Overview
 This project uses Ollama to generate vector embeddings for uploaded documents and provides search functions that allow users to query previous uploads. Documents can be stored in either SQLite or PostgreSQL databases.
 
+### Demo
+
+#### Personal Vector Store App
+- [https://vectorsearch.vdh.dev](https://vectorsearch.vdh.dev)
+
+#### Wikipedia Vector Search App
+- [https://vectorpedia.vdh.dev](https://vectorpedia.vdh.dev)
+
 ## Features
 - **Vector Embeddings**: Utilizes Ollama to create vector embeddings from user-uploaded documents.
 - **Search Functionality**: Enables users to perform searches through previously uploaded documents using the generated embeddings.
@@ -47,10 +55,10 @@ ollama pull nomic-embed-text
 ```powershell
 git clone https://github.com/go-vectorsearch.git
 cd go-vectorsearch
-Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui.css -OutFile ./static/swagger-ui.css
-Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -OutFile ./static/swagger-ui-bundle.js
+Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui.css -OutFile ./static/api/swagger-ui.css
+Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -OutFile ./static/api/swagger-ui-bundle.js
 New-Item -ItemType Directory -Force -Path ./build/
-go build -tags='avx' -o ./build/govectorsearch .
+go build -tags='avx' -o ./build/vectorsearch .
 ```
 
 ### Run App
@@ -59,13 +67,13 @@ The configuration file is auto generated if it does not exist.
 #### Linux
 
 ```bash
-./build/govectorsearch ./config.json
+./build/vectorsearch ./config.json
 ```
 
 #### Windows
 
 ```powershell
-./build/govectorsearch ./config.json
+./build/vectorsearch ./config.json
 ```
 
 ### Configuration
@@ -112,4 +120,4 @@ To get started with this project, first follow the installation instructions.
 
 ### Run
 
-- `go run .`
+- `go run . config.json`
