@@ -6,20 +6,30 @@ import (
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
-type Document struct {
-	ID          uint64        `gorm:"primarykey"`
-	ExternalID  string        `gorm:"not null"`
-	Vector      VectorField   `gorm:"not null"`
-	LastUpdated time.Time     `gorm:"index:idx_document_updated;not null"`
-	Prefix      string        `gorm:"not null"`
-	Document    DocumentField `gorm:"not null"`
-	Hash        string        `gorm:"uniqueIndex:uq_document_hash;not null"`
+type Embedding struct {
+	ID     uint64      `gorm:"primarykey"`
+	Vector VectorField `gorm:"not null"`
 
 	// Parent
-	CategoryID uint64   `gorm:"uniqueIndex:uq_document_hash;not null"`
-	Category   Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
-	CentroidID uint64   `gorm:"index:idx_document_centroid;not null"`
-	Centroid   Centroid `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	DocumentID uint64    `gorm:"index:idx_embedding_document;not null"`
+	Document   *Document `gorm:"foreignKey:DocumentID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	CentroidID uint64    `gorm:"index:idx_embedding_centroid;not null"`
+	Centroid   *Centroid `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+}
+
+type Document struct {
+	ID          uint64        `gorm:"primarykey"`
+	Name        string        `gorm:"not null"`
+	ExternalID  string        `gorm:"not null"`
+	LastUpdated time.Time     `gorm:"index:idx_document_updated;not null"`
+	Document    DocumentField `gorm:"not null"`
+
+	// Parent
+	CategoryID uint64    `gorm:"not null"`
+	Category   *Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+
+	// Children
+	Embeddings []*Embedding `gorm:"foreignKey:DocumentID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Centroid struct {
@@ -28,11 +38,11 @@ type Centroid struct {
 	LastUpdated time.Time   `gorm:"index:idx_centroid_updated;not null"`
 
 	// Parent
-	CategoryID uint64   `gorm:"index:idx_centroid_category;not null"`
-	Category   Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	CategoryID uint64    `gorm:"index:idx_centroid_category;not null"`
+	Category   *Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 
 	// Children
-	Documents []Document `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Embeddings []*Embedding `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Category struct {
@@ -41,11 +51,11 @@ type Category struct {
 
 	// Parent
 	OwnerID uint64 `gorm:"uniqueIndex:uq_category_name;not null"`
-	Owner   Owner  `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Owner   *Owner `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 
 	// Children
-	Centroids []Centroid `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
-	Documents []Document `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Centroids []*Centroid `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Documents []*Document `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }
 
 type Owner struct {
@@ -53,5 +63,5 @@ type Owner struct {
 	Name string `gorm:"uniqueIndex:uq_owner_name;not null"`
 
 	// Children
-	Categories []Category `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Categories []*Category `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
 }

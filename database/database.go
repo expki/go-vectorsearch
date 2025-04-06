@@ -79,6 +79,7 @@ func New(appCtx context.Context, cfg config.Database, refreshCentroids bool) (db
 		&Category{},
 		&Centroid{},
 		&Document{},
+		&Embedding{},
 	)
 
 	// add resolver connections

@@ -28,12 +28,12 @@ type cache struct {
 
 func (d *Database) newCache(ctx context.Context, categoryID uint64) (*cache, error) {
 	// get vector size
-	var document Document
-	err := d.DB.WithContext(ctx).Clauses(dbresolver.Read).Take(&document).Error
+	var embedding Embedding
+	err := d.DB.WithContext(ctx).Clauses(dbresolver.Read).Take(&embedding).Error
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to get vector size"), err)
 	}
-	vectorSize := len(document.Vector)
+	vectorSize := len(embedding.Vector)
 
 	// create empty cache file
 	path := filepath.Join(d.cfg.Cache, fmt.Sprintf("%d_%s.cache", categoryID, time.Now().Format(time.RFC3339)))
@@ -48,8 +48,6 @@ func (d *Database) newCache(ctx context.Context, categoryID uint64) (*cache, err
 		c.file,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithEncoderCRC(false),
-		zstd.WithEncoderPadding(1),
-		zstd.WithNoEntropyCompression(true),
 	)
 	if err != nil {
 		c.Close()
@@ -59,23 +57,26 @@ func (d *Database) newCache(ctx context.Context, categoryID uint64) (*cache, err
 	// buffer writes
 	encoderBuffer := bufio.NewWriterSize(encoder, vectorSize*config.BATCH_SIZE_DATABASE)
 
-	// retrieve documents in batches
-	var documents []Document
-	err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "vector").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-		// write documents to cache file
-		for _, document := range documents {
-			encoderBuffer.Write(document.Vector)
-			c.total++
-		}
-		return nil
-	}).Error
+	// retrieve embeddings in batches
+	var embeddings []Embedding
+	err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).
+		Joins("JOIN documents ON documents.id = embeddings.document_id").
+		Where("documents.category_id = ?", categoryID).
+		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+			// write embeddings to cache file
+			for _, embedding := range embeddings {
+				encoderBuffer.Write(embedding.Vector)
+				c.total++
+			}
+			return nil
+		}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		c.Close()
 		return nil, err
 	} else {
 		c.Close()
-		return nil, errors.Join(errors.New("failed to retrieve documents from database"), err)
+		return nil, errors.Join(errors.New("failed to retrieve embeddings from database"), err)
 	}
 
 	// finish writing to file

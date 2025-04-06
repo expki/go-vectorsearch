@@ -22,21 +22,25 @@ func CreateSample(path string) error {
 		},
 		AI: AI{
 			Embed: Ollama{
-				Url:   []string{"http://localhost:11434"},
-				Model: "nomic-embed-text",
+				Url:    []string{"http://localhost:11434"},
+				Model:  "nomic-embed-text",
+				NumCtx: 8192,
 			},
 			Generate: Ollama{
-				Url:   []string{"http://localhost:11434"},
-				Model: "llama3.2",
+				Url:    []string{"http://localhost:11434"},
+				Model:  "llama3.2",
+				NumCtx: 128_000,
 			},
 			Chat: Ollama{
-				Url:   []string{"http://localhost:11434"},
-				Model: "llama3.2",
+				Url:    []string{"http://localhost:11434"},
+				Model:  "llama3.2",
+				NumCtx: 128_000,
 			},
 		},
 		Database: Database{
-			Sqlite: "./vectorstore.db",
-			Cache:  "./cache",
+			Sqlite:   "./vectorstore.db",
+			Cache:    "./cache",
+			LogLevel: LogLevelError,
 		},
 		LogLevel: LogLevelInfo,
 	}

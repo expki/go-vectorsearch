@@ -41,7 +41,6 @@ type DocumentSearch struct {
 	DocumentUpload
 	DocumentID         uint64  `json:"document_id"`
 	DocumentSimilarity float32 `json:"document_similarity"`
-	CentroidSimilarity float32 `json:"centroid_similarity"`
 }
 
 func (s *Server) SearchHttp(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +149,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	// Get Owner
 	logger.Sugar().Debugf("retrieving owner: %s", req.Owner)
 	owner := database.Owner{Name: req.Owner}
-	result := s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ?", req.Owner).Take(&owner)
+	result := s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner)
 	if result.Error == nil {
 		// owner found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -166,8 +165,8 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get Category
 	logger.Sugar().Debugf("retrieving category: %s", req.Category)
-	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: owner}
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
+	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: &owner}
+	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
 	if result.Error == nil {
 		// category found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -184,7 +183,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	// Get Centroids
 	logger.Sugar().Debug("retrieving centroids")
 	var centroids []database.Centroid
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("category_id = ?", category.ID).Select("id", "vector").Find(&centroids)
+	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Select("id", "vector").Find(&centroids)
 	if result.Error == nil {
 		// centroids found
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -220,6 +219,10 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		return cmp.Compare(b.similarity, a.similarity)
 	})
 	closestCentroids = closestCentroids[:min(req.Centroids, len(closestCentroids))]
+	closestCentroidIdList := make([]uint64, len(closestCentroids))
+	for idx, centroid := range closestCentroids {
+		closestCentroidIdList[idx] = centroid.centroid.ID
+	}
 
 	// create new cosine similarity graph
 	cosineSimilarity, closeGraph := compute.VectorMatrixCosineSimilarity()
@@ -227,27 +230,24 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// For each centroid, find the closest documents to the embedding
 	type documentSimilarity struct {
-		centroidSimilarity *centroidSimilarity
-
+		documentID uint64
 		document   database.Document
 		similarity float32
 	}
 	closestDocuments := make([]documentSimilarity, 0, req.Count+req.Offset+config.BATCH_SIZE_DATABASE)
-	for _, centroid := range closestCentroids[:req.Centroids] {
-		// Find centroid documents in batches
-		var documents []database.Document
-		logger.Sugar().Debugf("calculate centroid %d's nearest documents", centroid.centroid.ID)
-		result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Where("centroid_id = ?", centroid.centroid.ID).Select("vector", "id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
-			// Find nearest documents to the embedding
-			matrixDocuments := make([][]uint8, len(documents))
-			for idx, document := range documents {
-				matrixDocuments[idx] = document.Vector
+	var embeddings []database.Embedding
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).
+		Where("centroid_id IN ?", closestCentroidIdList).
+		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
+			// Find nearest embedding to the query
+			matrixEmbeddings := make([][]uint8, len(embeddings))
+			for idx, embedding := range embeddings {
+				matrixEmbeddings[idx] = embedding.Vector
 			}
-			for idx, similarity := range cosineSimilarity(target.Clone(), compute.NewMatrix(matrixDocuments)) {
+			for idx, similarity := range cosineSimilarity(target.Clone(), compute.NewMatrix(matrixEmbeddings)) {
 				closestDocuments = append(closestDocuments, documentSimilarity{
-					centroidSimilarity: &centroid,
-					document:           documents[idx],
-					similarity:         similarity,
+					documentID: embeddings[idx].DocumentID,
+					similarity: similarity,
 				})
 			}
 			slices.SortFunc(closestDocuments, func(a, b documentSimilarity) int {
@@ -255,26 +255,26 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			})
 			closestDocuments = closestDocuments[:min(req.Count+req.Offset, uint(len(closestDocuments)))]
 			return nil
-		})
-		if result.Error == nil {
-			// success
-		} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
-			// request canceled
-			return res, result.Error
-		} else {
-			// exception encountered
-			return res, errors.Join(errors.New("database document batch retrieval failed"), result.Error)
-		}
+		}).
+		Error
+	if result.Error == nil {
+		// success
+	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+		// request canceled
+		return res, result.Error
+	} else {
+		// exception encountered
+		return res, errors.Join(errors.New("database document embedding batch retrieval failed"), result.Error)
 	}
 
 	// Fetch closest documents data
 	ids := make([]uint64, len(closestDocuments))
 	for idx, item := range closestDocuments {
-		ids[idx] = item.document.ID
+		ids[idx] = item.documentID
 	}
 	var documents []database.Document
 	logger.Sugar().Debug("fetching nearest documents")
-	result = s.db.Clauses(dbresolver.Read).WithContext(ctx).Select("id", "external_id", "document").Find(&documents, ids)
+	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Select("id", "external_id", "document").Find(&documents, ids)
 	if result.Error == nil {
 		// success
 	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
@@ -286,7 +286,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 	for _, document := range documents {
 		for idx, item := range closestDocuments {
-			if item.document.ID == document.ID {
+			if item.documentID == document.ID {
 				closestDocuments[idx].document = document
 				break
 			}
@@ -311,7 +311,6 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			},
 			DocumentID:         item.document.ID,
 			DocumentSimilarity: item.similarity,
-			CentroidSimilarity: item.centroidSimilarity.similarity,
 		}
 	}
 	res.Documents = res.Documents[:addCount]

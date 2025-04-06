@@ -21,15 +21,19 @@ import (
 
 func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID uint64) (err error) {
 	// Calculate k centroids
-	var countDocuments int64
-	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Model(&Document{}).Where("category_id = ?", categoryID).Count(&countDocuments).Error
+	var countEmbeddings int64
+	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).
+		Model(&Embedding{}).
+		Joins("JOIN documents ON documents.id = embeddings.document_id").
+		Where("documents.category_id = ?", categoryID).
+		Count(&countEmbeddings).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
 	} else {
-		return errors.Join(errors.New("failed to count documents"), err)
+		return errors.Join(errors.New("failed to count embeddings"), err)
 	}
-	k := int(math.Ceil(float64(countDocuments) / float64(config.CENTROID_SIZE)))
+	k := int(math.Ceil(float64(countEmbeddings) / float64(config.CENTROID_SIZE)))
 
 	// Get current centroids
 	var centroids []Centroid
@@ -103,7 +107,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
 	for n := 0; n < 10 && !converged; n++ {
-		if countDocuments > 100_000 {
+		if countEmbeddings > 100_000 {
 			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/100)", n))
 		}
 		matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
@@ -190,51 +194,54 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 		return errors.Join(errors.New("failed to save new/updated centroids in database"), err)
 	}
 
-	// Assign documents to new centroids
-	bar = progressbar.Default(int64(countDocuments), "Reassigning Documents to New Centroids")
+	// Assign embeddings to new centroids
+	bar = progressbar.Default(int64(countEmbeddings), "Reassigning Embeddings to New Centroids")
 	matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
-	var documents []Document
-	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Where("category_id = ?", categoryID).Select("id", "vector", "centroid_id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-		// convert documents to matrix
-		documentQuantizedMatrix := make([][]uint8, len(documents))
-		for idx, document := range documents {
-			documentQuantizedMatrix[idx] = document.Vector
-		}
-		matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
-
-		// calculate nearest centroids for each document
-		_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixDocuments)
-
-		// assign documents to new centroids
-		centroidDocuments := make([][]uint64, k)
-		for documentIdx, centroidIdx := range centroidIdList {
-			centroid := centroids[centroidIdx]
-			document := documents[documentIdx]
-			if document.CentroidID == centroid.ID {
-				bar.Add(1)
-				continue
+	var embeddings []Embedding
+	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).
+		Joins("JOIN documents ON documents.id = embeddings.document_id").
+		Where("documents.category_id = ?", categoryID).
+		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+			// convert embeddings to matrix
+			documentQuantizedMatrix := make([][]uint8, len(embeddings))
+			for idx, document := range embeddings {
+				documentQuantizedMatrix[idx] = document.Vector
 			}
-			centroidDocuments[centroidIdx] = append(centroidDocuments[centroidIdx], document.ID)
-		}
+			matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
 
-		// update document centroids in database
-		for centroidIdx, documentIds := range centroidDocuments {
-			if len(documentIds) == 0 {
-				continue
-			}
-			centroid := centroids[centroidIdx]
-			err = d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
-			if err == nil {
-			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-				return err
-			} else {
-				return errors.Join(errors.New("failed to update document centroids in database"), err)
+			// calculate nearest centroids for each embedding
+			_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixDocuments)
+
+			// assign documents to new centroids
+			centroidEmbeddings := make([][]uint64, k)
+			for documentIdx, centroidIdx := range centroidIdList {
+				centroid := centroids[centroidIdx]
+				document := embeddings[documentIdx]
+				if document.CentroidID == centroid.ID {
+					bar.Add(1)
+					continue
+				}
+				centroidEmbeddings[centroidIdx] = append(centroidEmbeddings[centroidIdx], document.ID)
 			}
 
-			bar.Add(len(centroidDocuments))
-		}
-		return nil
-	}).Error
+			// update embeddings centroids in database
+			for centroidIdx, embeddingIds := range centroidEmbeddings {
+				if len(embeddingIds) == 0 {
+					continue
+				}
+				centroid := centroids[centroidIdx]
+				err = d.DB.WithContext(appCtx).Clauses(dbresolver.Write).Model(&Embedding{}).Where("id IN ?", embeddingIds).Update("centroid_id", centroid.ID).Error
+				if err == nil {
+				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+					return err
+				} else {
+					return errors.Join(errors.New("failed to update document centroids in database"), err)
+				}
+
+				bar.Add(len(centroidEmbeddings))
+			}
+			return nil
+		}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -253,17 +260,17 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 	keepCentroids = make([]Centroid, 0, len(centroids)-1)
 	dropCentroids := make([]Centroid, 0, len(centroids)-1)
 	for _, centroid := range centroids {
-		// Get number of document in centroid
-		var centroidDocuments int64
-		err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Model(&Document{}).Where("centroid_id = ?", centroid.ID).Count(&centroidDocuments).Error
+		// Get number of embeddings in centroid
+		var centroidEmbeddings int64
+		err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Model(&Embedding{}).Where("centroid_id = ?", centroid.ID).Count(&centroidEmbeddings).Error
 		if err == nil {
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return nil, err
 		} else {
-			return nil, errors.Join(errors.New("failed to count document for centroid"), err)
+			return nil, errors.Join(errors.New("failed to count embeddings for centroid"), err)
 		}
 		// Check size is suffiecient
-		if centroidDocuments >= (config.CENTROID_SIZE / 10) {
+		if centroidEmbeddings >= (config.CENTROID_SIZE / 10) {
 			keepCentroids = append(keepCentroids, centroid)
 		} else {
 			dropCentroids = append(dropCentroids, centroid)
@@ -311,46 +318,52 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 				return errors.Join(errors.New("failed to retrieve the centroid to drop"), err)
 			}
 
-			// reassign centroid documents
-			var documents []Document
-			err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).Where("centroid_id = ?", centroid.ID).Select("id", "vector", "centroid_id").FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-				// convert documents to matrix
-				documentQuantizedMatrix := make([][]uint8, len(documents))
-				for idx, document := range documents {
-					documentQuantizedMatrix[idx] = document.Vector
-				}
-				matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
-
-				// calculate nearest centroids for each document
-				_, centroidIdList := cosineSimiarity(matrixKeepCentroids.Clone(), matrixDocuments)
-
-				// assign documents to new centroids
-				centroidDocuments := make([][]uint64, len(keepCentroids))
-				for documentIdx, centroidIdx := range centroidIdList {
-					centroid := centroids[centroidIdx]
-					document := documents[documentIdx]
-					if document.CentroidID == centroid.ID {
-						continue
+			// reassign centroid embeddings
+			var embeddings []Embedding
+			err = d.DB.WithContext(ctx).Clauses(dbresolver.Read).
+				Where("centroid_id = ?", centroid.ID).
+				Select("id", "vector", "centroid_id").
+				FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+					// convert documents to matrix
+					embeddingQuantizedMatrix := make([][]uint8, len(embeddings))
+					for idx, document := range embeddings {
+						embeddingQuantizedMatrix[idx] = document.Vector
 					}
-					centroidDocuments[centroidIdx] = append(centroidDocuments[centroidIdx], document.ID)
-				}
+					matrixEmbeddings := compute.NewMatrix(embeddingQuantizedMatrix)
 
-				// update document centroids in database
-				for centroidIdx, documentIds := range centroidDocuments {
-					if len(documentIds) == 0 {
-						continue
+					// calculate nearest centroids for each document
+					_, centroidIdList := cosineSimiarity(matrixKeepCentroids.Clone(), matrixEmbeddings)
+
+					// assign embeddings to new centroids
+					centroidEmbeddings := make([][]uint64, len(keepCentroids))
+					for embeddingIdx, centroidIdx := range centroidIdList {
+						centroid := centroids[centroidIdx]
+						embedding := embeddings[embeddingIdx]
+						if embedding.CentroidID == centroid.ID {
+							continue
+						}
+						centroidEmbeddings[centroidIdx] = append(centroidEmbeddings[centroidIdx], embedding.ID)
 					}
-					centroid := keepCentroids[centroidIdx]
-					err = d.DB.WithContext(ctx).Clauses(dbresolver.Write).Model(&Document{}).Where("id IN ?", documentIds).Update("centroid_id", centroid.ID).Error
-					if err == nil {
-					} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-						return err
-					} else {
-						return errors.Join(errors.New("failed to update document centroids in database"), err)
+
+					// update embedding centroids in database
+					for centroidIdx, embeddingIds := range centroidEmbeddings {
+						if len(embeddingIds) == 0 {
+							continue
+						}
+						centroid := keepCentroids[centroidIdx]
+						err = d.DB.WithContext(ctx).Clauses(dbresolver.Write).
+							Model(&Embedding{}).
+							Where("id IN ?", embeddingIds).
+							Update("centroid_id", centroid.ID).Error
+						if err == nil {
+						} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+							return err
+						} else {
+							return errors.Join(errors.New("failed to update embeddings centroids in database"), err)
+						}
 					}
-				}
-				return nil
-			}).Error
+					return nil
+				}).Error
 			if err == nil {
 			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 				if d.provider == config.DatabaseProvider_PostgreSQL {
@@ -361,7 +374,7 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 				if d.provider == config.DatabaseProvider_PostgreSQL {
 					tx.Rollback()
 				}
-				return errors.Join(errors.New("failed to calculate nearest keep centroids for documents"), err)
+				return errors.Join(errors.New("failed to calculate nearest keep centroids for embeddings"), err)
 			}
 
 			// Drop centroid
@@ -376,7 +389,7 @@ func dropSmallCentroids(ctx context.Context, d *Database, centroids []Centroid) 
 				if d.provider == config.DatabaseProvider_PostgreSQL {
 					tx.Rollback()
 				}
-				return errors.Join(errors.New("failed to calculate nearest keep centroids for documents"), err)
+				return errors.Join(errors.New("failed to drop centroid"), err)
 			}
 
 			// Release lock

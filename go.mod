@@ -3,7 +3,6 @@ module github.com/expki/go-vectorsearch
 go 1.24.2
 
 require (
-	github.com/cespare/xxhash v1.1.0
 	github.com/klauspost/compress v1.18.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	go.uber.org/zap v1.27.0

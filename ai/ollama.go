@@ -56,13 +56,13 @@ func NewAI(cfg config.AI) (a AI, err error) {
 	}
 
 	// Parse Chat URI
-	server.embed, err = newProvider(cfg.Chat)
+	server.chat, err = newProvider(cfg.Chat)
 	if err != nil {
 		return server, errors.Join(errors.New("chat config"), err)
 	}
 
 	// Parse Generate URI
-	server.embed, err = newProvider(cfg.Generate)
+	server.generate, err = newProvider(cfg.Generate)
 	if err != nil {
 		return server, errors.Join(errors.New("generate config"), err)
 	}

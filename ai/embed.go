@@ -64,7 +64,7 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return response, fmt.Errorf("response returned bad status code: %d", resp.StatusCode)
+		return response, fmt.Errorf("response returned bad status code %s: %d", uri.String(), resp.StatusCode)
 	}
 	// Read response
 	buf, err := io.ReadAll(resp.Body)
