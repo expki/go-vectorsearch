@@ -16,28 +16,56 @@ import (
 	"golang.org/x/net/http2"
 )
 
-type Ollama struct {
-	uri    []*ollamaUrl
-	client *http.Client
-	token  string
+type ai struct {
+	client   *http.Client
+	chat     provider
+	generate provider
+	embed    provider
 }
 
-func NewOllama(cfg config.Ollama) (ai AI, err error) {
-	ollama := new(Ollama)
+type provider struct {
+	uri   []*ollamaUrl
+	token string
+}
 
-	// Parse Ollama URI
+func newProvider(cfg config.Ollama) (provider, error) {
+	var p provider
+	// Parse URI
 	for _, cfgUrl := range cfg.Url {
 		uriPonter, err := url.Parse(cfgUrl)
 		if err != nil {
-			return nil, errors.Join(fmt.Errorf("unable to parse ollama url %q", cfgUrl), err)
+			return p, errors.Join(fmt.Errorf("unable to parse ollama url %q", cfgUrl), err)
 		} else if uriPonter == nil {
-			return nil, errors.New("parsed ollama url is nil")
+			return p, errors.New("parsed ollama url is nil")
 		}
-		ollama.uri = append(ollama.uri, &ollamaUrl{
+		p.uri = append(p.uri, &ollamaUrl{
 			uri: *uriPonter,
 		})
 	}
-	ollama.token = cfg.Token
+	p.token = cfg.Token
+	return p, nil
+}
+
+func NewAI(cfg config.AI) (a AI, err error) {
+	server := new(ai)
+
+	// Parse Embed URI
+	server.embed, err = newProvider(cfg.Embed)
+	if err != nil {
+		return server, errors.Join(errors.New("embed config"), err)
+	}
+
+	// Parse Chat URI
+	server.embed, err = newProvider(cfg.Chat)
+	if err != nil {
+		return server, errors.Join(errors.New("chat config"), err)
+	}
+
+	// Parse Generate URI
+	server.embed, err = newProvider(cfg.Generate)
+	if err != nil {
+		return server, errors.Join(errors.New("generate config"), err)
+	}
 
 	// Create http client
 	transport := &http.Transport{
@@ -46,14 +74,14 @@ func NewOllama(cfg config.Ollama) (ai AI, err error) {
 		},
 	}
 	http2.ConfigureTransport(transport)
-	ollama.client = &http.Client{
+	server.client = &http.Client{
 		Transport: transport,
 	}
 
-	return ollama, nil
+	return server, nil
 }
 
-func (o *Ollama) Url() (uri url.URL, done func()) {
+func (o *provider) Url() (uri url.URL, done func()) {
 	uriList := slices.Clone(o.uri)
 	rand.Shuffle(len(uriList), func(i, j int) {
 		uriList[i], uriList[j] = uriList[j], uriList[i]

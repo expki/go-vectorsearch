@@ -46,7 +46,7 @@ type ChatMessage struct {
 	ToolCalls []json.RawMessage `json:"tool_calls,omitempty"`
 }
 
-func (ai *Ollama) Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error) {
+func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error) {
 	// Create request body
 	request.Stream = false
 	body, err := json.Marshal(request)
@@ -54,7 +54,7 @@ func (ai *Ollama) Chat(ctx context.Context, request ChatRequest) (response ChatR
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Create request
-	uri, uriDone := ai.Url()
+	uri, uriDone := ai.chat.Url()
 	defer uriDone()
 	uri.Path = "/api/chat"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
@@ -63,8 +63,8 @@ func (ai *Ollama) Chat(ctx context.Context, request ChatRequest) (response ChatR
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.token)
+	if ai.chat.token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.chat.token)
 	}
 	// Send request
 	resp, err := ai.client.Do(req)
@@ -97,7 +97,7 @@ type chatStream struct {
 	Done      bool        `json:"done"`
 }
 
-func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser) {
+func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser) {
 	request.Stream = true
 	stream, writer := io.Pipe()
 
@@ -110,7 +110,7 @@ func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream i
 			return
 		}
 		// Create request
-		uri, uriDone := ai.Url()
+		uri, uriDone := ai.chat.Url()
 		defer uriDone()
 		uri.Path = "/api/chat"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
@@ -120,8 +120,8 @@ func (ai *Ollama) ChatStream(ctx context.Context, request ChatRequest) (stream i
 		}
 		// Set headers
 		req.Header.Set("Content-Type", "application/json")
-		if ai.token != "" {
-			req.Header.Set("Authorization", "Bearer "+ai.token)
+		if ai.chat.token != "" {
+			req.Header.Set("Authorization", "Bearer "+ai.chat.token)
 		}
 		// Send request
 		resp, err := ai.client.Do(req)

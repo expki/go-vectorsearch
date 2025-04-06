@@ -42,7 +42,7 @@ type GenerateResponse struct {
 	EvalDuration       int64 `json:"eval_duration"`
 }
 
-func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (response GenerateResponse, err error) {
+func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response GenerateResponse, err error) {
 	// Create request body
 	request.Stream = false
 	body, err := json.Marshal(request)
@@ -50,7 +50,7 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Create request
-	uri, uriDone := ai.Url()
+	uri, uriDone := ai.generate.Url()
 	defer uriDone()
 	uri.Path = "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
@@ -59,8 +59,8 @@ func (ai *Ollama) Generate(ctx context.Context, request GenerateRequest) (respon
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.token)
+	if ai.generate.token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.generate.token)
 	}
 	// Send request
 	resp, err := ai.client.Do(req)
@@ -93,7 +93,7 @@ type GenerateStream struct {
 	Done      bool      `json:"done"`
 }
 
-func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (stream io.Reader) {
+func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stream io.Reader) {
 	request.Stream = true
 	stream, writer := io.Pipe()
 
@@ -106,7 +106,7 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 			writer.CloseWithError(errors.Join(errors.New("failed to marshal request body"), err))
 		}
 		// Create request
-		uri, uriDone := ai.Url()
+		uri, uriDone := ai.generate.Url()
 		defer uriDone()
 		uri.Path = "/api/generate"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
@@ -116,8 +116,8 @@ func (ai *Ollama) GenerateStream(ctx context.Context, request GenerateRequest) (
 		}
 		// Set headers
 		req.Header.Set("Content-Type", "application/json")
-		if ai.token != "" {
-			req.Header.Set("Authorization", "Bearer "+ai.token)
+		if ai.generate.token != "" {
+			req.Header.Set("Authorization", "Bearer "+ai.generate.token)
 		}
 		// Send request
 		resp, err := ai.client.Do(req)

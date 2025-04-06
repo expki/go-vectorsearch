@@ -35,14 +35,14 @@ type EmbedResponse struct {
 	PromptEvalCount int        `json:"prompt_eval_count"`
 }
 
-func (ai *Ollama) Embed(ctx context.Context, request EmbedRequest) (response EmbedResponse, err error) {
+func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedResponse, err error) {
 	// Create request body
 	body, err := json.Marshal(request)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Create request
-	uri, uriDone := ai.Url()
+	uri, uriDone := ai.embed.Url()
 	defer uriDone()
 	uri.Path = "/api/embed"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
@@ -51,8 +51,8 @@ func (ai *Ollama) Embed(ctx context.Context, request EmbedRequest) (response Emb
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.token)
+	if ai.embed.token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.embed.token)
 	}
 	// Send request
 	resp, err := ai.client.Do(req)

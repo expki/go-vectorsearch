@@ -20,11 +20,19 @@ func CreateSample(path string) error {
 			IP:               []string{},
 			Certificates:     []*ConfigTLSPath{},
 		},
-		Ollama: Ollama{
-			Url:      []string{"http://localhost:11434"},
-			Embed:    "nomic-embed-text",
-			Generate: "llama3.2",
-			Chat:     "llama3.2",
+		AI: AI{
+			Embed: Ollama{
+				Url:   []string{"http://localhost:11434"},
+				Model: "nomic-embed-text",
+			},
+			Generate: Ollama{
+				Url:   []string{"http://localhost:11434"},
+				Model: "llama3.2",
+			},
+			Chat: Ollama{
+				Url:   []string{"http://localhost:11434"},
+				Model: "llama3.2",
+			},
 		},
 		Database: Database{
 			Sqlite: "./vectorstore.db",
