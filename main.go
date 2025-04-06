@@ -70,7 +70,7 @@ func main() {
 
 	// AI
 	logger.Sugar().Info("Loading AI...")
-	aiClient, err := ai.NewOllama(cfg.Ollama)
+	aiClient, err := ai.NewAI(cfg.AI)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}
@@ -84,7 +84,7 @@ func main() {
 
 	// Server
 	logger.Sugar().Info("Loading Server...")
-	srv := server.New(cfg.Ollama, db, aiClient)
+	srv := server.New(cfg.AI, db, aiClient)
 
 	// Create mux
 	mux := http.NewServeMux()
