@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math"
@@ -39,7 +40,11 @@ func NewOllama(cfg config.Ollama) (ai AI, err error) {
 	ollama.token = cfg.Token
 
 	// Create http client
-	transport := &http.Transport{}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
 	http2.ConfigureTransport(transport)
 	ollama.client = &http.Client{
 		Transport: transport,
