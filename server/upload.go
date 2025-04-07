@@ -140,11 +140,8 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		// exception encountered
 		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
-	if len(embedRes.Embeddings) != len(req.Documents) {
-		return res, errors.New("invalid embeddings response")
-	}
 	matrixEmbeddings := embedRes.Embeddings.Underlying()
-	if len(matrixEmbeddings) != len(req.Documents) {
+	if len(matrixEmbeddings) != len(embeddingInputList) {
 		return res, errors.New("invalid response embeddings count")
 	}
 
