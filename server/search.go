@@ -306,6 +306,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 		addCount++
 		res.Documents[idx-skipCount] = DocumentSearch{
 			DocumentUpload: DocumentUpload{
+				Name:       item.document.Name,
 				ExternalID: item.document.ExternalID,
 				Document:   item.document.Document.JSON(),
 			},
