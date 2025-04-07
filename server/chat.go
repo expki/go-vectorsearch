@@ -89,6 +89,7 @@ func (s *Server) ChatHttp(w http.ResponseWriter, r *http.Request) {
 			if err == io.EOF {
 				break
 			}
+			logger.Sugar().Errorf("Error reading stream: %v", err)
 			http.Error(w, "Error reading stream", http.StatusInternalServerError)
 			return
 		}
@@ -172,7 +173,7 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 
 	// Start chat
 	chat := s.ai.ChatStream(ctx, ai.ChatRequest{
-		Model:    s.config.Embed.Model,
+		Model:    s.config.Chat.Model,
 		Messages: messages,
 	})
 
