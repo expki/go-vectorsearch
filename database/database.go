@@ -22,7 +22,7 @@ type Database struct {
 	*gorm.DB
 }
 
-func New(appCtx context.Context, cfg config.Database, refreshCentroids bool) (db *Database, err error) {
+func New(appCtx context.Context, cfg config.Database) (db *Database, err error) {
 	// ensure cache directory exists
 	if err := os.MkdirAll(cfg.Cache, 0755); err != nil {
 		return nil, errors.Join(errors.New("failed to create cache directory"), err)
@@ -102,9 +102,6 @@ func New(appCtx context.Context, cfg config.Database, refreshCentroids bool) (db
 		}
 	}
 	db = &Database{provider: provider, cfg: cfg, DB: godb}
-	if refreshCentroids {
-		go db.refreshCentroidJob(appCtx)
-	}
 
 	return db, nil
 }

@@ -77,10 +77,11 @@ func main() {
 
 	// Database
 	logger.Sugar().Info("Loading database...")
-	db, err := database.New(appCtx, cfg.Database, true)
+	db, err := database.New(appCtx, cfg.Database)
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
+	go db.RefreshCentroids(appCtx)
 
 	// Server
 	logger.Sugar().Info("Loading Server...")

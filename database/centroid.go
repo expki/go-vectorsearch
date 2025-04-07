@@ -5,8 +5,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/logger"
@@ -15,29 +13,7 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
-func (d *Database) refreshCentroidJob(appCtx context.Context) {
-	logger.Sugar().Debug("Starting centroid refresh job")
-	d.refreshCentroids(appCtx)
-
-	var lock sync.Mutex
-
-	ticker := time.NewTicker(config.CENTROID_REFRESH_INTERVAL)
-	for {
-		select {
-		case <-appCtx.Done():
-			logger.Sugar().Info("Shutting down centroid refresh job")
-			ticker.Stop()
-			return
-		case <-ticker.C:
-			if lock.TryLock() {
-				d.refreshCentroids(appCtx)
-				lock.Unlock()
-			}
-		}
-	}
-}
-
-func (d *Database) refreshCentroids(appCtx context.Context) {
+func (d *Database) RefreshCentroids(appCtx context.Context) {
 	// Retrieve list of categories
 	var categories []Category
 	err := d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Select("id").Find(&categories).Error

@@ -108,7 +108,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	var converged bool
 	for n := 0; n < 10 && !converged; n++ {
 		if countEmbeddings > 100_000 {
-			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/100)", n))
+			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/10)", n))
 		}
 		matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
 
