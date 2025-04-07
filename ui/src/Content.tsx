@@ -70,7 +70,7 @@ function Content({ owner, category }: Props) {
       Upload({
         owner: owner,
         category: category,
-        prefix: category,
+        name: category,
         documents: [{document: directText}],
       }).then(() => console.log(`Text processed: ${directText.substring(0, 50)}${directText.length > 50 ? "..." : ""}`));
       setDirectText('');
@@ -88,7 +88,7 @@ function Content({ owner, category }: Props) {
       Upload({
         owner: owner,
         category: category,
-        prefix: category,
+        name: category,
         documents: documents,
       }).then(() => console.log(`${uploadedFiles.length} file(s) processed`));
       setUploadedFiles([]);

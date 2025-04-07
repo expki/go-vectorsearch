@@ -1,7 +1,8 @@
 export type UploadRequest = {
     owner: string,
     category: string,
-    prefix?: string,
+    name?: string,
+    external_id?: string,
     documents: Array<DocumentUpload>,
     no_update?: boolean,
 };

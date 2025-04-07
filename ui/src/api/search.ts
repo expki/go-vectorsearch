@@ -13,11 +13,11 @@ export type SearchResponse = {
 }
 
 export type DocumentSearch = {
+  name?: string,
 	external_id?: string,
   document: any,
 	document_id: number,
 	document_similarity: number,
-	centroid_similarity: number,
 }
 
 export async function Search(request: SearchRequest): Promise<SearchResponse | undefined> {
