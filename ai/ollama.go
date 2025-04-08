@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -72,6 +74,15 @@ func NewAI(cfg config.AI) (a AI, err error) {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 5 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 5,
+		MaxConnsPerHost:     100,
 	}
 	http2.ConfigureTransport(transport)
 	server.client = &http.Client{
