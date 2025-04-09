@@ -61,6 +61,7 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 		if err == nil {
 			break
 		}
+		time.Sleep(1)
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {

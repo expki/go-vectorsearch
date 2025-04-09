@@ -88,16 +88,16 @@ func flattenMap(data map[string]any) string {
 	return builder.String()
 }
 
-func Split(text string, ctxNum int) (list []string) {
+func Split(prefix, text string, ctxNum int) (list []string) {
 	maxWords := ((ctxNum * 9) / 10) / 4
 	list = make([]string, 0, 10)
-	current := ""
+	current := prefix
 	currentNumWords := 0
 	for _, sentence := range strings.Split(text, "\n") {
 		numWords := len(strings.Fields(sentence))
 		if numWords+currentNumWords > maxWords && current != "" {
 			list = append(list, current)
-			current = ""
+			current = prefix
 			currentNumWords = 0
 		}
 		current = fmt.Sprintf("%s %s", current, sentence)

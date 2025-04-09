@@ -73,6 +73,7 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 		if err == nil {
 			break
 		}
+		time.Sleep(1)
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -136,6 +137,7 @@ func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.Re
 			if err == nil {
 				break
 			}
+			time.Sleep(1)
 		}
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to send request"), err))

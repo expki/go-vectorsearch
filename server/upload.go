@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/expki/go-vectorsearch/ai"
@@ -116,8 +117,12 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	embeddingCountPerDocumentList := make([]int, len(req.Documents))
 	embeddingInputList := make([]string, 0, len(req.Documents))
 	for idx, file := range req.Documents {
-		paragraph := Flatten(file.Document)
-		sections := Split(paragraph, s.config.Embed.GetNumCtx())
+		prefix := ""
+		if file.Name != "" {
+			prefix = strings.TrimSuffix(strings.TrimSpace(file.Name), ".") + ". "
+		}
+		document := Flatten(file.Document)
+		sections := Split(prefix, document, s.config.Embed.GetNumCtx())
 		for idx, section := range sections {
 			sections[idx] = fmt.Sprintf("search_document: %s", section)
 		}

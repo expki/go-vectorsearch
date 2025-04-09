@@ -69,6 +69,7 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 		if err == nil {
 			break
 		}
+		time.Sleep(1)
 	}
 	if err != nil {
 		return response, errors.Join(errors.New("failed to send request"), err)
@@ -132,6 +133,7 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 			if err == nil {
 				break
 			}
+			time.Sleep(1)
 		}
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to send request"), err))
