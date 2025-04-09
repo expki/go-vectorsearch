@@ -235,7 +235,6 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	// Create documents
 	logger.Sugar().Debug("creating documents")
 	newDocuments := make([]*database.Document, len(req.Documents))
-	newEmbeddings := make([]*database.Embedding, 0, len(req.Documents))
 	for idx, documentReq := range req.Documents {
 		// create document
 		file, _ := json.Marshal(req.Documents[idx].Document)
@@ -265,13 +264,13 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		}
 
 		// save
-		newEmbeddings = append(newEmbeddings, newDocumentEmbeddings...)
+		document.Embeddings = newDocumentEmbeddings
 		newDocuments[idx] = document
 	}
 
 	// Save Documents
 	logger.Sugar().Debug("saving embeddings")
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Session(&gorm.Session{FullSaveAssociations: true}).Create(&newEmbeddings).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Session(&gorm.Session{FullSaveAssociations: true}).Create(&newDocuments).Error
 	if err == nil {
 		// documents created
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
