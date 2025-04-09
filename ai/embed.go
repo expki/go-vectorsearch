@@ -55,7 +55,13 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 		req.Header.Set("Authorization", "Bearer "+ai.embed.token)
 	}
 	// Send request
-	resp, err := ai.client.Do(req)
+	var resp *http.Response
+	for range 2 { // retry for http2 connection closed
+		resp, err = ai.client.Do(req)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return response, err

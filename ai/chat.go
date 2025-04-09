@@ -67,7 +67,13 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 		req.Header.Set("Authorization", "Bearer "+ai.chat.token)
 	}
 	// Send request
-	resp, err := ai.client.Do(req)
+	var resp *http.Response
+	for range 2 { // retry for http2 connection closed
+		resp, err = ai.client.Do(req)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			return response, err
@@ -124,7 +130,13 @@ func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.Re
 			req.Header.Set("Authorization", "Bearer "+ai.chat.token)
 		}
 		// Send request
-		resp, err := ai.client.Do(req)
+		var resp *http.Response
+		for range 2 { // retry for http2 connection closed
+			resp, err = ai.client.Do(req)
+			if err == nil {
+				break
+			}
+		}
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to send request"), err))
 			return
