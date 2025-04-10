@@ -19,7 +19,7 @@ func (c *Cache) FetchOwner(name string, fetch func() (database.Owner, error)) (v
 	key := ownerKey{Name: name}.String()
 
 	// singleflight fetch
-	valueAny, err, _ := centroidsSingleflight.Do(key, func() (any, error) {
+	valueAny, err, _ := ownerSingleflight.Do(key, func() (any, error) {
 		// retrieve cache item
 		c.ownerLock.RLock()
 		cacheValue, ok := c.owner[key]
@@ -38,9 +38,9 @@ func (c *Cache) FetchOwner(name string, fetch func() (database.Owner, error)) (v
 		}
 
 		// fetch new result
-		values, err := fetch()
+		value, err = fetch()
 		if err != nil {
-			return values, err
+			return value, err
 		}
 
 		// save new result
@@ -52,7 +52,7 @@ func (c *Cache) FetchOwner(name string, fetch func() (database.Owner, error)) (v
 		c.ownerLock.Unlock()
 
 		// return new result
-		return values, err
+		return value, err
 	})
 	if err != nil {
 		return value, err
@@ -68,7 +68,7 @@ func (c *Cache) FetchCategory(name string, ownerID uint64, fetch func() (databas
 	key := categoryKey{Name: name, OwnerID: ownerID}.String()
 
 	// singleflight fetch
-	valueAny, err, _ := centroidsSingleflight.Do(key, func() (any, error) {
+	valueAny, err, _ := categorySingleflight.Do(key, func() (any, error) {
 		// retrieve cache item
 		c.categoryLock.RLock()
 		cacheValue, ok := c.category[key]
@@ -87,9 +87,9 @@ func (c *Cache) FetchCategory(name string, ownerID uint64, fetch func() (databas
 		}
 
 		// fetch new result
-		values, err := fetch()
+		value, err = fetch()
 		if err != nil {
-			return values, err
+			return value, err
 		}
 
 		// save new result
@@ -101,7 +101,7 @@ func (c *Cache) FetchCategory(name string, ownerID uint64, fetch func() (databas
 		c.categoryLock.Unlock()
 
 		// return new result
-		return values, err
+		return value, err
 	})
 	if err != nil {
 		return value, err
@@ -136,7 +136,7 @@ func (c *Cache) FetchCentroids(categoryID uint64, fetch func() ([]database.Centr
 		}
 
 		// fetch new result
-		values, err := fetch()
+		values, err = fetch()
 		if err != nil {
 			return values, err
 		}

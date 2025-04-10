@@ -245,7 +245,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).
 		Where("centroid_id IN ?", closestCentroidIdList).
 		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, n int) error {
-			// Find nearest embedding to the query
+			// find nearest embedding to the query
 			matrixEmbeddings := make([][]uint8, len(embeddings))
 			for idx, embedding := range embeddings {
 				matrixEmbeddings[idx] = embedding.Vector
@@ -256,9 +256,21 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 					similarity: similarity,
 				})
 			}
+			// sort by nearest
 			slices.SortFunc(closestDocuments, func(a, b documentSimilarity) int {
 				return cmp.Compare(b.similarity, a.similarity)
 			})
+			// remove duplicates
+			seen := make(map[uint64]struct{}, len(closestDocuments))
+			unqiueClosestDocuents := make([]documentSimilarity, 0, len(closestDocuments))
+			for _, document := range closestDocuments {
+				if _, ok := seen[document.documentID]; !ok {
+					unqiueClosestDocuents = append(unqiueClosestDocuents, document)
+					seen[document.documentID] = struct{}{}
+				}
+			}
+			closestDocuments = unqiueClosestDocuents
+			// truncate list
 			closestDocuments = closestDocuments[:min(req.Count+req.Offset, uint(len(closestDocuments)))]
 			return nil
 		}).
@@ -280,7 +292,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 	var documents []database.Document
 	logger.Sugar().Debug("fetching nearest documents")
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Select("id", "external_id", "document").Find(&documents, ids).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Find(&documents, ids).Error
 	if err == nil {
 		// success
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -316,7 +328,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 				ExternalID: item.document.ExternalID,
 				Document:   item.document.Document.JSON(),
 			},
-			DocumentID:         item.document.ID,
+			DocumentID:         item.documentID,
 			DocumentSimilarity: item.similarity,
 		}
 	}

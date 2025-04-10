@@ -224,9 +224,11 @@ func (s *Server) DeleteOwner(ctx context.Context, owner string) (err error) {
 	return nil
 }
 
-func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (err error) {
-	var ownerDetails database.Owner
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", owner).Select("id").Take(&ownerDetails).Error
+func (s *Server) DeleteCategory(ctx context.Context, ownerName, categoryName string) (err error) {
+	ownerDetails, err := s.cache.FetchOwner(ownerName, func() (owner database.Owner, err error) {
+		logger.Sugar().Debug("retrieve owner from database")
+		return owner, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", ownerName).Take(&owner).Error
+	})
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -235,7 +237,7 @@ func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (er
 	} else {
 		return errors.Join(errors.New("get owner exception"), err)
 	}
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("owner_id = ? AND name = ?", ownerDetails.ID, category).Delete(&database.Category{}).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Where("owner_id = ? AND name = ?", ownerDetails.ID, categoryName).Delete(&database.Category{}).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -247,9 +249,11 @@ func (s *Server) DeleteCategory(ctx context.Context, owner, category string) (er
 	return nil
 }
 
-func (s *Server) DeleteDocument(ctx context.Context, owner, category string, documentID uint64) (err error) {
-	var ownerDetails database.Owner
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", owner).Select("id").Take(&ownerDetails).Error
+func (s *Server) DeleteDocument(ctx context.Context, ownerName, categoryName string, documentID uint64) (err error) {
+	ownerDetails, err := s.cache.FetchOwner(ownerName, func() (owner database.Owner, err error) {
+		logger.Sugar().Debug("retrieve owner from database")
+		return owner, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", ownerName).Take(&owner).Error
+	})
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -258,8 +262,11 @@ func (s *Server) DeleteDocument(ctx context.Context, owner, category string, doc
 	} else {
 		return errors.Join(errors.New("get owner exception"), err)
 	}
-	var categoryDetails database.Category
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("owner_id = ? AND name = ?", ownerDetails.ID, category).Select("id").Take(&categoryDetails).Error
+	categoryDetails, err := s.cache.FetchCategory(categoryName, ownerDetails.ID, func() (category database.Category, err error) {
+		logger.Sugar().Debug("retrieve category from database")
+		return category, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", categoryName, ownerDetails.ID).Take(&category).Error
+	})
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("owner_id = ? AND name = ?", ownerDetails.ID, categoryName).Select("id").Take(&categoryDetails).Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err

@@ -12,9 +12,9 @@ type Embedding struct {
 
 	// Parent
 	DocumentID uint64    `gorm:"index:idx_embedding_document;not null"`
-	Document   *Document `gorm:"foreignKey:DocumentID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Document   *Document `gorm:"foreignKey:DocumentID"`
 	CentroidID uint64    `gorm:"index:idx_embedding_centroid;not null"`
-	Centroid   *Centroid `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Centroid   *Centroid `gorm:"foreignKey:CentroidID"`
 }
 
 type Document struct {
@@ -26,7 +26,7 @@ type Document struct {
 
 	// Parent
 	CategoryID uint64    `gorm:"not null"`
-	Category   *Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Category   *Category `gorm:"foreignKey:CategoryID"`
 
 	// Children
 	Embeddings []*Embedding `gorm:"foreignKey:DocumentID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
@@ -39,7 +39,7 @@ type Centroid struct {
 
 	// Parent
 	CategoryID uint64    `gorm:"index:idx_centroid_category;not null"`
-	Category   *Category `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Category   *Category `gorm:"foreignKey:CategoryID"`
 
 	// Children
 	Embeddings []*Embedding `gorm:"foreignKey:CentroidID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
@@ -51,7 +51,7 @@ type Category struct {
 
 	// Parent
 	OwnerID uint64 `gorm:"uniqueIndex:uq_category_name;not null"`
-	Owner   *Owner `gorm:"foreignKey:OwnerID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
+	Owner   *Owner `gorm:"foreignKey:OwnerID"`
 
 	// Children
 	Centroids []*Centroid `gorm:"foreignKey:CategoryID;constraint:onUpdate:CASCADE,onDelete:CASCADE"`
