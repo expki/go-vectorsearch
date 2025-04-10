@@ -151,65 +151,71 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 
 	// Get Owner
-	logger.Sugar().Debug("retrieve owner")
-	var owner database.Owner
-	result := s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner)
-	if result.Error == nil {
+	logger.Sugar().Debug("retrieve owner from cache")
+	owner, err := s.cache.FetchOwner(req.Owner, func() (owner database.Owner, err error) {
+		logger.Sugar().Debug("retrieve owner from database")
+		return owner, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner).Error
+	})
+	if err == nil {
 		// owner found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// owner request canceled
-		return res, result.Error
-	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return res, err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// owner create
 		owner = database.Owner{
 			Name: req.Owner,
 		}
-		result = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&owner)
-		if result.Error != nil {
-			return res, errors.Join(errors.New("failed to create owner"), result.Error)
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&owner).Error
+		if err != nil {
+			return res, errors.Join(errors.New("failed to create owner"), err)
 		}
 	} else {
 		// owner retrieve error
-		return res, errors.Join(errors.New("failed to get owner"), result.Error)
+		return res, errors.Join(errors.New("failed to get owner"), err)
 	}
 
 	// Get Category
-	logger.Sugar().Debug("retrieve category")
-	var category database.Category
-	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category)
-	if result.Error == nil {
+	logger.Sugar().Debug("retrieve category from cache")
+	category, err := s.cache.FetchCategory(req.Category, owner.ID, func() (category database.Category, err error) {
+		logger.Sugar().Debug("retrieve category from database")
+		return category, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category).Error
+	})
+	if err == nil {
 		// category found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// category request canceled
-		return res, result.Error
-	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return res, err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// category create
 		category = database.Category{
 			Name:    req.Category,
 			OwnerID: owner.ID,
 			Owner:   &owner,
 		}
-		result = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&category)
-		if result.Error != nil {
-			return res, errors.Join(errors.New("failed to create category"), result.Error)
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&category).Error
+		if err != nil {
+			return res, errors.Join(errors.New("failed to create category"), err)
 		}
 	} else {
 		// category retrieve error
-		return res, errors.Join(errors.New("failed to get category"), result.Error)
+		return res, errors.Join(errors.New("failed to get category"), err)
 	}
 
 	// Get Centroids
-	logger.Sugar().Debug("retrieve centroids")
-	var centroids []database.Centroid
-	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids)
-	if result.Error == nil {
+	logger.Sugar().Debug("retrieve centroids from cache")
+	centroids, err := s.cache.FetchCentroids(category.ID, func() (centroids []database.Centroid, err error) {
+		logger.Sugar().Debug("retrieve centroids from database")
+		return centroids, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids).Error
+	})
+	if err == nil {
 		// centroids found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// centroids request canceled
-		return res, result.Error
+		return res, err
 	} else {
 		// centroids retrieve error
-		return res, errors.Join(errors.New("failed to get centroids"), result.Error)
+		return res, errors.Join(errors.New("failed to get centroids"), err)
 	}
 	if len(centroids) == 0 {
 		// centroid create
@@ -218,9 +224,9 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			CategoryID: category.ID,
 			Category:   &category,
 		})
-		result = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&centroids)
-		if result.Error != nil {
-			return res, errors.Join(errors.New("failed to create initial centroid"), result.Error)
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&centroids).Error
+		if err != nil {
+			return res, errors.Join(errors.New("failed to create initial centroid"), err)
 		}
 	}
 
@@ -235,6 +241,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	// Create documents
 	logger.Sugar().Debug("creating documents")
 	newDocuments := make([]*database.Document, len(req.Documents))
+	newEmbeddings := make([]*database.Embedding, 0, len(req.Documents))
 	for idx, documentReq := range req.Documents {
 		// create document
 		file, _ := json.Marshal(req.Documents[idx].Document)
@@ -255,12 +262,14 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			centroidIdx := centroidIdxList[0]
 			centroidIdxList = centroidIdxList[1:]
 			centroid := centroids[centroidIdx]
-			newDocumentEmbeddings = append(newDocumentEmbeddings, &database.Embedding{
+			embedding := &database.Embedding{
 				Vector:     vector,
 				CentroidID: centroid.ID,
 				Centroid:   &centroid,
 				Document:   document,
-			})
+			}
+			newEmbeddings = append(newEmbeddings, embedding)
+			newDocumentEmbeddings = append(newDocumentEmbeddings, embedding)
 		}
 
 		// save
@@ -269,8 +278,8 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 
 	// Save Documents
-	logger.Sugar().Debug("saving embeddings")
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Session(&gorm.Session{FullSaveAssociations: true}).Create(&newDocuments).Error
+	logger.Sugar().Debug("saving documents")
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit("Category", "Embeddings").Create(&newDocuments).Error
 	if err == nil {
 		// documents created
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -279,6 +288,22 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	} else {
 		// documents save error
 		return res, errors.Join(errors.New("failed to save documents"), err)
+	}
+	for _, embedding := range newEmbeddings {
+		embedding.DocumentID = embedding.Document.ID
+	}
+
+	// Save Embeddings
+	logger.Sugar().Debug("saving embeddings")
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit("Centroid", "Document").Create(&newEmbeddings).Error
+	if err == nil {
+		// embeddings created
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		// embeddings request canceled
+		return res, err
+	} else {
+		// embeddings save error
+		return res, errors.Join(errors.New("failed to save embeddings"), err)
 	}
 
 	// Create response

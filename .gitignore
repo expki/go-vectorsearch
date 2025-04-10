@@ -1,4 +1,4 @@
 build/
-cache/
-config.json
 vectorstore.db
+vectorcache/
+config.json

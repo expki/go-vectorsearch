@@ -39,7 +39,7 @@ func CreateSample(path string) error {
 		},
 		Database: Database{
 			Sqlite:   "./vectorstore.db",
-			Cache:    "./cache",
+			Cache:    "./vectorcache",
 			LogLevel: LogLevelError,
 		},
 		LogLevel: LogLevelInfo,

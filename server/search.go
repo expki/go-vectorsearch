@@ -148,50 +148,56 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get Owner
 	logger.Sugar().Debugf("retrieving owner: %s", req.Owner)
-	owner := database.Owner{Name: req.Owner}
-	result := s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner)
-	if result.Error == nil {
+	owner, err := s.cache.FetchOwner(req.Owner, func() (owner database.Owner, err error) {
+		logger.Sugar().Debug("retrieve owner from database")
+		return owner, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner).Error
+	})
+	if err == nil {
 		// owner found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// owner request canceled
-		return res, result.Error
-	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return res, err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// owner not found
 		return res, nil
 	} else {
 		// owner retrieve error
-		return res, errors.Join(errors.New("failed to get owner"), result.Error)
+		return res, errors.Join(errors.New("failed to get owner"), err)
 	}
 
 	// Get Category
 	logger.Sugar().Debugf("retrieving category: %s", req.Category)
-	category := database.Category{Name: req.Category, OwnerID: owner.ID, Owner: &owner}
-	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Select("id").Take(&category)
-	if result.Error == nil {
+	category, err := s.cache.FetchCategory(req.Category, owner.ID, func() (category database.Category, err error) {
+		logger.Sugar().Debug("retrieve category from database")
+		return category, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category).Error
+	})
+	if err == nil {
 		// category found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// category request canceled
-		return res, result.Error
-	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return res, err
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// category not found
 		return res, nil
 	} else {
 		// category retrieve error
-		return res, errors.Join(errors.New("failed to get category"), result.Error)
+		return res, errors.Join(errors.New("failed to get category"), err)
 	}
 
 	// Get Centroids
 	logger.Sugar().Debug("retrieving centroids")
-	var centroids []database.Centroid
-	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Select("id", "vector").Find(&centroids)
-	if result.Error == nil {
+	centroids, err := s.cache.FetchCentroids(category.ID, func() (centroids []database.Centroid, err error) {
+		logger.Sugar().Debug("retrieve centroids from database")
+		return centroids, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids).Error
+	})
+	if err == nil {
 		// centroids found
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// centroids request canceled
-		return res, result.Error
+		return res, err
 	} else {
 		// centroids retrieve error
-		return res, errors.Join(errors.New("failed to get centroids"), result.Error)
+		return res, errors.Join(errors.New("failed to get centroids"), err)
 	}
 	if len(centroids) == 0 {
 		return res, nil
@@ -257,14 +263,14 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 			return nil
 		}).
 		Error
-	if result.Error == nil {
+	if err == nil {
 		// success
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// request canceled
-		return res, result.Error
+		return res, err
 	} else {
 		// exception encountered
-		return res, errors.Join(errors.New("database document embedding batch retrieval failed"), result.Error)
+		return res, errors.Join(errors.New("database document embedding batch retrieval failed"), err)
 	}
 
 	// Fetch closest documents data
@@ -274,15 +280,15 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 	var documents []database.Document
 	logger.Sugar().Debug("fetching nearest documents")
-	result = s.db.WithContext(ctx).Clauses(dbresolver.Read).Select("id", "external_id", "document").Find(&documents, ids)
-	if result.Error == nil {
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Select("id", "external_id", "document").Find(&documents, ids).Error
+	if err == nil {
 		// success
-	} else if errors.Is(result.Error, context.Canceled) || errors.Is(result.Error, context.DeadlineExceeded) || errors.Is(result.Error, os.ErrDeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// request canceled
-		return res, result.Error
+		return res, err
 	} else {
 		// exception encountered
-		return res, errors.Join(errors.New("database document retrieval failed"), result.Error)
+		return res, errors.Join(errors.New("database document retrieval failed"), err)
 	}
 	for _, document := range documents {
 		for idx, item := range closestDocuments {
