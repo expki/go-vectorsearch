@@ -9,8 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
@@ -20,18 +19,19 @@ import (
 
 type ai struct {
 	client   *http.Client
-	chat     provider
-	generate provider
-	embed    provider
+	chat     *provider
+	generate *provider
+	embed    *provider
 }
 
 type provider struct {
+	lock  sync.Mutex
 	uri   []*ollamaUrl
 	token string
 }
 
-func newProvider(cfg config.Ollama) (provider, error) {
-	var p provider
+func newProvider(cfg config.Ollama) (*provider, error) {
+	p := &provider{uri: make([]*ollamaUrl, 0)}
 	// Parse URI
 	for _, cfgUrl := range cfg.Url {
 		uriPonter, err := url.Parse(cfgUrl)
@@ -92,37 +92,39 @@ func NewAI(cfg config.AI) (a AI, err error) {
 	return server, nil
 }
 
-func (o *provider) Url() (uri url.URL, done func()) {
-	uriList := slices.Clone(o.uri)
-	rand.Shuffle(len(uriList), func(i, j int) {
-		uriList[i], uriList[j] = uriList[j], uriList[i]
+func (p *provider) Url() (uri url.URL, done func()) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if len(p.uri) == 0 {
+		return
+	}
+
+	// randomzised order
+	rand.Shuffle(len(p.uri), func(i, j int) {
+		p.uri[i], p.uri[j] = p.uri[j], p.uri[i]
 	})
-	var best *ollamaUrl
-	var bestConns int64 = math.MaxInt64
-	for _, uri := range uriList {
-		conns := uri.Connections()
-		if conns < bestConns {
-			best = uri
-			bestConns = conns
+
+	// find lowest connection count
+	var lowestConnections *ollamaUrl
+	var lowestConnectionsCount int64 = math.MaxInt64
+	for _, uri := range p.uri {
+		if uri.connections < lowestConnectionsCount {
+			lowestConnections = uri
 		}
 	}
-	return best.Get(), best.Done
+
+	// increment count
+	lowestConnections.connections += 1
+
+	// return url
+	return lowestConnections.uri, func() {
+		p.lock.Lock()
+		lowestConnections.connections -= 1
+		p.lock.Unlock()
+	}
 }
 
 type ollamaUrl struct {
 	uri         url.URL
 	connections int64
-}
-
-func (u *ollamaUrl) Connections() int64 {
-	return atomic.LoadInt64(&u.connections)
-}
-
-func (u *ollamaUrl) Get() url.URL {
-	atomic.AddInt64(&u.connections, 1)
-	return u.uri
-}
-
-func (u *ollamaUrl) Done() {
-	atomic.AddInt64(&u.connections, -1)
 }

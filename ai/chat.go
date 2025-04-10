@@ -68,9 +68,9 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 	}
 	// Send request
 	var resp *http.Response
-	for range 2 { // retry for http2 connection closed
+	for idx := range 2 { // retry for http2 connection closed
 		resp, err = ai.client.Do(req)
-		if err == nil {
+		if err == nil || idx == 1 {
 			break
 		}
 		time.Sleep(1)
@@ -132,9 +132,9 @@ func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.Re
 		}
 		// Send request
 		var resp *http.Response
-		for range 2 { // retry for http2 connection closed
+		for idx := range 2 { // retry for http2 connection closed
 			resp, err = ai.client.Do(req)
-			if err == nil {
+			if err == nil || idx == 1 {
 				break
 			}
 			time.Sleep(1)

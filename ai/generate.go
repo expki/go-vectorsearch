@@ -64,9 +64,9 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 	}
 	// Send request
 	var resp *http.Response
-	for range 2 { // retry for http2 connection closed
+	for idx := range 2 { // retry for http2 connection closed
 		resp, err = ai.client.Do(req)
-		if err == nil {
+		if err == nil || idx == 1 {
 			break
 		}
 		time.Sleep(1)
@@ -128,9 +128,9 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 		}
 		// Send request
 		var resp *http.Response
-		for range 2 { // retry for http2 connection closed
+		for idx := range 2 { // retry for http2 connection closed
 			resp, err = ai.client.Do(req)
-			if err == nil {
+			if err == nil || idx == 1 {
 				break
 			}
 			time.Sleep(1)
