@@ -17,6 +17,7 @@ import (
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -189,7 +190,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 				OwnerID: owner.ID,
 				Owner:   &owner,
 			}
-			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&category).Error
+			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit(clause.Associations).Create(&category).Error
 			if err != nil {
 				err = errors.Join(errors.New("failed to create category"), err)
 			}
@@ -218,7 +219,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 				CategoryID: category.ID,
 				Category:   &category,
 			})
-			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&centroids).Error
+			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit(clause.Associations).Create(&centroids).Error
 			if err != nil {
 				err = errors.Join(errors.New("failed to create initial centroid"), err)
 			}
@@ -284,7 +285,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Save Documents
 	logger.Sugar().Debug("saving documents")
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit("Category", "Embeddings").Create(&newDocuments).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit(clause.Associations).Create(&newDocuments).Error
 	if err == nil {
 		// documents created
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -300,7 +301,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Save Embeddings
 	logger.Sugar().Debug("saving embeddings")
-	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit("Centroid", "Document").Create(&newEmbeddings).Error
+	err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Omit(clause.Associations).Create(&newEmbeddings).Error
 	if err == nil {
 		// embeddings created
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
