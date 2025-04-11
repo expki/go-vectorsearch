@@ -211,7 +211,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	centroids, err := s.cache.FetchCentroids(category.ID, func() (centroids []database.Centroid, err error) {
 		logger.Sugar().Debug("retrieve centroids from database")
 		err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids).Error
-		if err == nil || len(centroids) == 0 {
+		if err == nil && len(centroids) == 0 {
 			// centroid create
 			centroids = append(centroids, database.Centroid{
 				Vector:     matrixEmbeddings[0],
