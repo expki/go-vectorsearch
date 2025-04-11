@@ -63,14 +63,9 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 		req.Header.Set("Authorization", "Bearer "+ai.generate.token)
 	}
 	// Send request
-	var resp *http.Response
-	for idx := range 2 { // retry for http2 connection closed
-		resp, err = ai.client.Do(req)
-		if err == nil || idx == 1 {
-			break
-		}
-		time.Sleep(1)
-	}
+	client, close := ai.clientManager.GetHttpClient(uri.Host)
+	defer close()
+	resp, err := client.Do(req)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to send request"), err)
 	}
@@ -127,14 +122,9 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 			req.Header.Set("Authorization", "Bearer "+ai.generate.token)
 		}
 		// Send request
-		var resp *http.Response
-		for idx := range 2 { // retry for http2 connection closed
-			resp, err = ai.client.Do(req)
-			if err == nil || idx == 1 {
-				break
-			}
-			time.Sleep(1)
-		}
+		client, close := ai.clientManager.GetHttpClient(uri.Host)
+		defer close()
+		resp, err := client.Do(req)
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to send request"), err))
 			return

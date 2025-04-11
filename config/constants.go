@@ -9,4 +9,6 @@ const (
 
 	CACHE_DURATION = 5 * time.Second
 	CACHE_CLEANUP  = 15 * time.Second
+
+	HTTP_CLIENT_MAX_REQUESTS uint64 = 500
 )

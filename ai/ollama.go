@@ -7,21 +7,19 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
 	"github.com/expki/go-vectorsearch/config"
 	_ "github.com/expki/go-vectorsearch/env"
-	"golang.org/x/net/http2"
 )
 
 type ai struct {
-	client   *http.Client
-	chat     *provider
-	generate *provider
-	embed    *provider
+	clientManager *ClientManager
+	chat          *provider
+	generate      *provider
+	embed         *provider
 }
 
 type provider struct {
@@ -70,24 +68,15 @@ func NewAI(cfg config.AI) (a AI, err error) {
 	}
 
 	// Create http client
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
+	server.clientManager = NewClientManager(
+		&tls.Config{
 			InsecureSkipVerify: true,
 		},
-		DialContext: (&net.Dialer{
+		&net.Dialer{
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout: 5 * time.Second,
-		IdleConnTimeout:     90 * time.Second,
-		MaxIdleConns:        50,
-		MaxIdleConnsPerHost: 5,
-		MaxConnsPerHost:     100,
-	}
-	http2.ConfigureTransport(transport)
-	server.client = &http.Client{
-		Transport: transport,
-	}
+		},
+	)
 
 	return server, nil
 }
