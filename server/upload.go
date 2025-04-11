@@ -154,22 +154,24 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	logger.Sugar().Debug("retrieve owner from cache")
 	owner, err := s.cache.FetchOwner(req.Owner, func() (owner database.Owner, err error) {
 		logger.Sugar().Debug("retrieve owner from database")
-		return owner, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner).Error
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ?", req.Owner).Take(&owner).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// owner create
+			owner = database.Owner{
+				Name: req.Owner,
+			}
+			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&owner).Error
+			if err != nil {
+				err = errors.Join(errors.New("failed to create owner"), err)
+			}
+		}
+		return owner, err
 	})
 	if err == nil {
 		// owner found
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// owner request canceled
 		return res, err
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// owner create
-		owner = database.Owner{
-			Name: req.Owner,
-		}
-		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&owner).Error
-		if err != nil {
-			return res, errors.Join(errors.New("failed to create owner"), err)
-		}
 	} else {
 		// owner retrieve error
 		return res, errors.Join(errors.New("failed to get owner"), err)
@@ -179,24 +181,26 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	logger.Sugar().Debug("retrieve category from cache")
 	category, err := s.cache.FetchCategory(req.Category, owner.ID, func() (category database.Category, err error) {
 		logger.Sugar().Debug("retrieve category from database")
-		return category, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category).Error
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("name = ? AND owner_id = ?", req.Category, owner.ID).Take(&category).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// category create
+			category = database.Category{
+				Name:    req.Category,
+				OwnerID: owner.ID,
+				Owner:   &owner,
+			}
+			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&category).Error
+			if err != nil {
+				err = errors.Join(errors.New("failed to create category"), err)
+			}
+		}
+		return category, err
 	})
 	if err == nil {
 		// category found
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		// category request canceled
 		return res, err
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// category create
-		category = database.Category{
-			Name:    req.Category,
-			OwnerID: owner.ID,
-			Owner:   &owner,
-		}
-		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&category).Error
-		if err != nil {
-			return res, errors.Join(errors.New("failed to create category"), err)
-		}
 	} else {
 		// category retrieve error
 		return res, errors.Join(errors.New("failed to get category"), err)
@@ -206,7 +210,20 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	logger.Sugar().Debug("retrieve centroids from cache")
 	centroids, err := s.cache.FetchCentroids(category.ID, func() (centroids []database.Centroid, err error) {
 		logger.Sugar().Debug("retrieve centroids from database")
-		return centroids, s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids).Error
+		err = s.db.WithContext(ctx).Clauses(dbresolver.Read).Where("category_id = ?", category.ID).Find(&centroids).Error
+		if err == nil || len(centroids) == 0 {
+			// centroid create
+			centroids = append(centroids, database.Centroid{
+				Vector:     matrixEmbeddings[0],
+				CategoryID: category.ID,
+				Category:   &category,
+			})
+			err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&centroids).Error
+			if err != nil {
+				err = errors.Join(errors.New("failed to create initial centroid"), err)
+			}
+		}
+		return centroids, err
 	})
 	if err == nil {
 		// centroids found
@@ -216,18 +233,6 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	} else {
 		// centroids retrieve error
 		return res, errors.Join(errors.New("failed to get centroids"), err)
-	}
-	if len(centroids) == 0 {
-		// centroid create
-		centroids = append(centroids, database.Centroid{
-			Vector:     matrixEmbeddings[0],
-			CategoryID: category.ID,
-			Category:   &category,
-		})
-		err = s.db.WithContext(ctx).Clauses(dbresolver.Write).Create(&centroids).Error
-		if err != nil {
-			return res, errors.Join(errors.New("failed to create initial centroid"), err)
-		}
 	}
 
 	// Assign Embeddings to Centroids
