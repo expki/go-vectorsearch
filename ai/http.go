@@ -121,7 +121,9 @@ func (c *clientInstance) Close() {
 	if c.activeRequests <= 0 && c.totalRequests >= config.HTTP_CLIENT_MAX_REQUESTS {
 		c.lockCloser.Lock()
 		logger.Sugar().Debugf("closing http client: %s", c.address)
-		c.close()
+		if c.close != nil {
+			c.close()
+		}
 		c.lockCloser.Unlock()
 	}
 	c.lockRequests.Unlock()
