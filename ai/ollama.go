@@ -103,6 +103,7 @@ func (p *provider) Url() (uri url.URL, done func()) {
 	for _, uri := range p.uri {
 		if uri.connections < lowestConnectionsCount {
 			lowestConnections = uri
+			lowestConnectionsCount = uri.connections
 		}
 	}
 
