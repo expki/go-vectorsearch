@@ -11,10 +11,11 @@ type AI struct {
 }
 
 type Ollama struct {
-	Url    SingleOrSlice[string] `json:"url"`
-	Token  string                `json:"token"`
-	Model  string                `json:"model"`
-	NumCtx int                   `json:"num_ctx"`
+	Url         SingleOrSlice[string] `json:"url"`
+	Token       string                `json:"token"`
+	Model       string                `json:"model"`
+	NumCtx      int                   `json:"num_ctx"`
+	Compression bool                  `json:"compression"`
 }
 
 func (c Ollama) GetNumCtx() int {

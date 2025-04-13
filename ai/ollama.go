@@ -23,13 +23,17 @@ type ai struct {
 }
 
 type provider struct {
-	lock  sync.Mutex
-	uri   []*ollamaUrl
-	token string
+	lock        sync.Mutex
+	uri         []*ollamaUrl
+	token       string
+	compression bool
 }
 
 func newProvider(cfg config.Ollama) (*provider, error) {
-	p := &provider{uri: make([]*ollamaUrl, 0)}
+	p := &provider{
+		uri:         make([]*ollamaUrl, 0),
+		compression: cfg.Compression,
+	}
 	// Parse URI
 	for _, cfgUrl := range cfg.Url {
 		uriPonter, err := url.Parse(cfgUrl)

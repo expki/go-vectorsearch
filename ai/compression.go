@@ -1,4 +1,4 @@
-package database
+package ai
 
 import (
 	_ "github.com/expki/go-vectorsearch/env"
@@ -9,9 +9,6 @@ var encoder *zstd.Encoder = func() *zstd.Encoder {
 	encoder, err := zstd.NewWriter(
 		nil,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
-		zstd.WithSingleSegment(true),
-		zstd.WithEncoderCRC(false),
-		zstd.WithNoEntropyCompression(true),
 	)
 	if err != nil {
 		panic(err)

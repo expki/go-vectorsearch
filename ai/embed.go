@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
@@ -41,6 +42,10 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	if err != nil {
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
+	// Request compression
+	if ai.embed.compression {
+		body = compress(body)
+	}
 	// Create request
 	uri, uriDone := ai.embed.Url()
 	defer uriDone()
@@ -51,6 +56,10 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
+	if ai.embed.compression {
+		req.Header.Set("Content-Encoding", "zstd")
+	}
+	req.Header.Set("Accept-Encoding", "zstd")
 	if ai.embed.token != "" {
 		req.Header.Set("Authorization", "Bearer "+ai.embed.token)
 	}
@@ -72,6 +81,12 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to read response body"), err)
+	}
+	if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
+		buf, err = decompress(buf)
+		if err != nil {
+			return response, errors.Join(errors.New("failed to decompress response"), err)
+		}
 	}
 	err = json.Unmarshal(buf, &response)
 	if err != nil {
