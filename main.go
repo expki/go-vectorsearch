@@ -81,7 +81,7 @@ func main() {
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
-	go db.RefreshCentroids(appCtx)
+	go db.RefreshCentroids(appCtx, -1)
 
 	// Server
 	logger.Sugar().Info("Loading Server...")

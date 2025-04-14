@@ -13,7 +13,7 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
-func (d *Database) RefreshCentroids(appCtx context.Context) {
+func (d *Database) RefreshCentroids(appCtx context.Context, limit int) {
 	// Retrieve list of categories
 	var categories []Category
 	err := d.DB.WithContext(appCtx).Clauses(dbresolver.Read).Select("id").Find(&categories).Error
@@ -60,7 +60,7 @@ func (d *Database) RefreshCentroids(appCtx context.Context) {
 		}
 
 		// Process category
-		err = d.KMeansCentroidAssignment(appCtx, category.ID)
+		err = d.KMeansCentroidAssignment(appCtx, category.ID, limit)
 		if err == nil {
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 			logger.Sugar().Info("Refresh centroids cancelled")

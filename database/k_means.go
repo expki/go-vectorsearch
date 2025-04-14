@@ -13,13 +13,14 @@ import (
 
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
+	"github.com/expki/go-vectorsearch/logger"
 	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
 )
 
-func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID uint64) (err error) {
+func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID uint64, limit int) (err error) {
 	// Calculate k centroids
 	var countEmbeddings int64
 	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).
@@ -46,18 +47,18 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	}
 
 	// Remove small centroids
-	centroids, err = dropSmallCentroids(appCtx, d, centroids)
-	if err == nil {
-	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-		return err
-	} else {
-		return errors.Join(errors.New("failed to drop small centroids"), err)
-	}
+	//centroids, err = dropSmallCentroids(appCtx, d, centroids)
+	//if err == nil {
+	//} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+	//	return err
+	//} else {
+	//	return errors.Join(errors.New("failed to drop small centroids"), err)
+	//}
 
 	// Check if we already have enough centroids
-	if len(centroids) >= k {
-		return nil
-	}
+	//if len(centroids) >= k {
+	//	return nil
+	//}
 
 	// create cache of documents
 	cache, err := d.newCache(appCtx, categoryID)
@@ -106,9 +107,9 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	// Loop until convergence
 	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
-	for n := 0; n < 1 && !converged; n++ {
+	for n := 0; (n < limit || limit <= 0) && !converged; n++ {
 		if countEmbeddings > 100_000 {
-			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/10)", n))
+			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/%d)", n, limit))
 		}
 		matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
 
@@ -197,26 +198,33 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	// Assign embeddings to new centroids
 	bar = progressbar.Default(int64(countEmbeddings), "Reassigning Embeddings to New Centroids")
 	matrixCentroids := compute.NewMatrix(matrixQuantizedCentroids)
-	var embeddings []Embedding
+	var documents []Document
 	err = d.DB.WithContext(appCtx).Clauses(dbresolver.Read).
-		Joins("JOIN documents ON documents.id = embeddings.document_id").
-		Where("documents.category_id = ?", categoryID).
-		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-			// convert embeddings to matrix
-			documentQuantizedMatrix := make([][]uint8, len(embeddings))
-			for idx, document := range embeddings {
-				documentQuantizedMatrix[idx] = document.Vector
+		Model(&Document{}).
+		Preload("Embeddings").
+		Where("category_id = ?", categoryID).
+		FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+			// seperate embeddings
+			embeddings := make([]*Embedding, 0, len(documents))
+			for _, document := range documents {
+				embeddings = append(embeddings, document.Embeddings...)
 			}
-			matrixDocuments := compute.NewMatrix(documentQuantizedMatrix)
+
+			// convert embeddings to matrix
+			embeddingQuantizedMatrix := make([][]uint8, len(embeddings))
+			for idx, embedding := range embeddings {
+				embeddingQuantizedMatrix[idx] = embedding.Vector
+			}
+			matrixEmbeddings := compute.NewMatrix(embeddingQuantizedMatrix)
 
 			// calculate nearest centroids for each embedding
-			_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixDocuments)
+			_, centroidIdList := cosineSimiarity(matrixCentroids.Clone(), matrixEmbeddings)
 
-			// assign documents to new centroids
+			// assign embeddings to new centroids
 			centroidEmbeddings := make([][]uint64, k)
-			for documentIdx, centroidIdx := range centroidIdList {
+			for embeddingIdx, centroidIdx := range centroidIdList {
 				centroid := centroids[centroidIdx]
-				document := embeddings[documentIdx]
+				document := embeddings[embeddingIdx]
 				if document.CentroidID == centroid.ID {
 					bar.Add(1)
 					continue
@@ -248,6 +256,8 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	} else {
 		return errors.Join(errors.New("failed to calculate nearest centroids for documents"), err)
 	}
+	bar.Close()
+	logger.Sugar().Info("Refresh Completed")
 
 	return nil
 }
