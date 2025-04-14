@@ -106,7 +106,7 @@ func (d *Database) KMeansCentroidAssignment(appCtx context.Context, categoryID u
 	// Loop until convergence
 	bar := progressbar.Default(-1, "K-Means Clustering")
 	var converged bool
-	for n := 0; n < 10 && !converged; n++ {
+	for n := 0; n < 1 && !converged; n++ {
 		if countEmbeddings > 100_000 {
 			bar.Describe(fmt.Sprintf("K-Means Clustering (%d/10)", n))
 		}
