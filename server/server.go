@@ -13,7 +13,7 @@ import (
 
 var index atomic.Uint64
 
-func New(appCtx context.Context, cfg config.AI, db *database.Database, ai ai.AI) *Server {
+func New(appCtx context.Context, cfg config.Config, db *database.Database, ai ai.AI) *Server {
 	return &Server{
 		db:     db,
 		ai:     ai,
@@ -25,6 +25,6 @@ func New(appCtx context.Context, cfg config.AI, db *database.Database, ai ai.AI)
 type Server struct {
 	db     *database.Database
 	ai     ai.AI
-	config config.AI
+	config config.Config
 	cache  *cache.Cache
 }

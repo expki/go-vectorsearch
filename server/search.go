@@ -129,7 +129,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	}
 	logger.Sugar().Debug("embedding search query")
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.Embed.Model,
+		Model: s.config.AI.Embed.Model,
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
 	})
 	if err == nil {

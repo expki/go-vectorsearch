@@ -123,7 +123,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			prefix = strings.TrimSuffix(strings.TrimSpace(file.Name), ".") + ". "
 		}
 		document := Flatten(file.Document)
-		sections := Split(prefix, document, s.config.Embed.GetNumCtx())
+		sections := Split(prefix, document, s.config.AI.Embed.GetNumCtx())
 		for idx, section := range sections {
 			sections[idx] = fmt.Sprintf("search_document: %s", section)
 		}
@@ -134,7 +134,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	// Get embeddings
 	logger.Sugar().Debug("generating embeddings")
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.Embed.Model,
+		Model: s.config.AI.Embed.Model,
 		Input: embeddingInputList,
 	})
 	if err == nil {

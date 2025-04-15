@@ -173,7 +173,7 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 
 	// Start chat
 	chat := s.ai.ChatStream(ctx, ai.ChatRequest{
-		Model:    s.config.Chat.Model,
+		Model:    s.config.AI.Chat.Model,
 		Messages: messages,
 	})
 

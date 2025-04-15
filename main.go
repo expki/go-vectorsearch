@@ -81,11 +81,11 @@ func main() {
 	if err != nil {
 		logger.Sugar().Fatalf("database.New: %v", err)
 	}
-	go db.RefreshCentroids(appCtx, -1)
 
 	// Server
 	logger.Sugar().Info("Loading Server...")
-	srv := server.New(appCtx, cfg.AI, db, aiClient)
+	srv := server.New(appCtx, cfg, db, aiClient)
+	go srv.RefreshCentroids(appCtx)
 
 	// Create mux
 	mux := http.NewServeMux()

@@ -17,7 +17,7 @@ import (
 )
 
 type Database struct {
-	provider config.DatabaseProvider
+	Provider config.DatabaseProvider
 	cfg      config.Database
 	*gorm.DB
 }
@@ -101,7 +101,7 @@ func New(appCtx context.Context, cfg config.Database) (db *Database, err error) 
 			return nil, err
 		}
 	}
-	db = &Database{provider: provider, cfg: cfg, DB: godb}
+	db = &Database{Provider: provider, cfg: cfg, DB: godb}
 
 	return db, nil
 }
