@@ -106,7 +106,7 @@ func newDataset(vectorSize int, folderPath string) (
 			if err != nil {
 				logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
 			}
-			return
+			decoderBuffer = bufio.NewReaderSize(decoder, vectorSize*config.BATCH_SIZE_CACHE)
 		}
 
 		// create closer
@@ -118,6 +118,7 @@ func newDataset(vectorSize int, folderPath string) (
 
 		// calculate centroid
 		vector := kMeans(sample(rowReader, int(totalCount), 100_000), 1)[0]
+		restart()
 
 		return dataset{
 			vectorSize, folderPath,
