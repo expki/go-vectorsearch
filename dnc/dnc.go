@@ -21,7 +21,7 @@ import (
 )
 
 // TODO: limit memory usage
-var queue = make(chan struct{}, max(1, runtime.NumCPU()))
+var queue = make(chan struct{}, max(1, runtime.NumCPU()/2))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
