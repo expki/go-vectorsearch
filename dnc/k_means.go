@@ -6,12 +6,10 @@ import (
 	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 )
 
 // assign data to k centroids
-func kMeans(multibar *mpb.Progress, data [][]uint8, k int) [][]uint8 {
+func kMeans(data [][]uint8, k int) [][]uint8 {
 	if len(data) == 0 || k <= 0 {
 		return nil
 	}
@@ -35,17 +33,6 @@ func kMeans(multibar *mpb.Progress, data [][]uint8, k int) [][]uint8 {
 	defer closeGraph()
 
 	// Step 3: Iterate until convergence
-	var bar *mpb.Bar
-	if multibar != nil {
-		bar = multibar.AddBar(
-			-1,
-			mpb.PrependDecorators(
-				decor.Name("K-Means Clustering:"),
-				decor.CountersNoUnit("%d / %d"),
-			),
-		)
-	}
-
 	vectorLen := len(centroids[0])
 	var converged bool
 	for !converged {
@@ -95,12 +82,6 @@ func kMeans(multibar *mpb.Progress, data [][]uint8, k int) [][]uint8 {
 		}
 
 		centroids = newCentroids
-		if bar != nil {
-			bar.Increment()
-		}
-	}
-	if bar != nil {
-		bar.EnableTriggerComplete()
 	}
 
 	return centroids

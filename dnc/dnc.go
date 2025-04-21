@@ -3,9 +3,11 @@ package dnc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
@@ -65,13 +67,14 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar := multibar.AddBar(
 		total,
 		mpb.PrependDecorators(
-			decor.Name("Read database embeddings:"),
+			decor.Name("Read embeddings:"),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
 			decor.EwmaETA(decor.ET_STYLE_GO, 5),
 		),
 	)
+	start := time.Now()
 	var results []result
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
 		Model(&database.Embedding{}).
@@ -82,7 +85,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			for _, item := range results {
 				dataWriter.WriteRow(item.Vector)
 			}
-			bar.IncrBy(len(results))
+			bar.EwmaIncrBy(len(results), time.Since(start))
 			return nil
 		}).
 		Error
@@ -99,7 +102,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	Y := make(chan []uint8)
 	itteration := &atomic.Int64{}
 	itteration.Add(1)
-	go divideNconquer(ctx, multibar, itteration, config.CENTROID_SIZE, X, Y)
+	go divideNconquer(ctx, multibar, itteration, &atomic.Uint64{}, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
 	centroids := make([][]uint8, 0)
@@ -148,13 +151,14 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar = multibar.AddBar(
 		total,
 		mpb.PrependDecorators(
-			decor.Name("Update database embeddings:"),
+			decor.Name("Update embeddings:"),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
 			decor.EwmaETA(decor.ET_STYLE_GO, 5),
 		),
 	)
+	start = time.Now()
 	var updates []update
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
 		Model(&database.Embedding{}).
@@ -164,7 +168,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		FindInBatches(&updates, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 			// todo: reassign documents
 			//db.Model(&User{}).Where("id IN ?", ids).Update("email", "newemail@example.com")
-			bar.IncrBy(len(updates))
+			bar.EwmaIncrBy(len(updates), time.Since(start))
 			return nil
 		}).
 		Error
@@ -179,7 +183,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 }
 
 // divide X into k subsets until target is achived
-func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *atomic.Int64, targetSize uint64, X *dataset, Y chan<- []uint8) {
+func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
 	queue <- struct{}{}
 	defer func() {
 		X.Close()
@@ -200,7 +204,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	X.Reset()
 
 	// create centroids
-	centroids := kMeans(multibar, data, 2)
+	centroids := kMeans(data, 2)
 	centroidsMatrix := compute.NewMatrix(centroids)
 
 	// create dataset writers
@@ -221,7 +225,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	bar := multibar.AddBar(
 		int64(X.total),
 		mpb.PrependDecorators(
-			decor.Name("Dataset Centroid assignment:"),
+			decor.Name(fmt.Sprintf("%d split embeddings:", instance.Add(1))),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
@@ -262,7 +266,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	for _, dataWriter := range dataWriterList {
 		subsetX := dataWriter.Finalize()
 		itteration.Add(1)
-		go divideNconquer(ctx, multibar, itteration, targetSize, subsetX, Y)
+		go divideNconquer(ctx, multibar, itteration, instance, targetSize, subsetX, Y)
 	}
 
 	return
