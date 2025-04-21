@@ -186,15 +186,22 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			updateMap := make(map[uint64][]uint64, len(centroids))
 			for dataIdx, centroidIdx := range centroidIndexes {
 				centroidID := dbCentroids[centroidIdx].ID
+				update := updates[dataIdx]
+				if update.CentroidID == centroidID {
+					continue
+				}
 				current, ok := updateMap[centroidID]
 				if !ok {
 					current = make([]uint64, 0)
 				}
-				updateMap[centroidID] = append(current, updates[dataIdx].ID)
+				updateMap[centroidID] = append(current, update.ID)
 			}
 
 			// update embeddings in database
 			for centroidID, embeddingIDs := range updateMap {
+				if len(embeddingIDs) == 0 {
+					continue
+				}
 				err = db.WithContext(ctx).Clauses(dbresolver.Write).
 					Model(&database.Embedding{}).
 					Where("id IN ?", embeddingIDs).
