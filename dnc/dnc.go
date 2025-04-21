@@ -243,11 +243,20 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	}
 
 	// create sample
-	data := sample(X.ReadRow, int(X.total), 50_000)
+	data := sample(X.ReadRow, int(X.total), config.SAMPLE_SIZE)
 	X.Reset()
 
 	// create centroids
-	centroids := kMeans(data, 2)
+	centroids := kMeans(
+		data,
+		min(
+			config.SPLIT_SIZE,
+			max(
+				2,
+				int(X.total/targetSize),
+			),
+		),
+	)
 	centroidsMatrix := compute.NewMatrix(centroids)
 
 	// create dataset writers
