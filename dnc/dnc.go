@@ -30,7 +30,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// create dataset writer
-	dataWriter, dataFinializer, err := newDataset(len(embedding.Vector), folderPath)
+	dataWriter, err := newDataset(len(embedding.Vector), folderPath)
 	if err != nil {
 		return errors.Join(errors.New("failed to create file writer"), err)
 	}
@@ -49,7 +49,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		Select("embeddings.id as id, embeddings.vector as vector").
 		FindInBatches(&results, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 			for _, item := range results {
-				dataWriter(item.Vector)
+				dataWriter.WriteRow(item.Vector)
 			}
 			bar.Add(len(results))
 			return nil
@@ -63,43 +63,40 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to read database embeddings"), err)
 	}
 
-	// finalize dataset
-	X := dataFinializer()
-
 	// divide and conquer
+	X := dataWriter.Finalize()
 	Y := divideNconquer(ctx, X, config.CENTROID_SIZE)
+	X.Close()
 
 	// todo: complete updating new centroids in database and re-assign all embeddings
 	for idx, y := range Y {
 		fmt.Println(idx, y.total)
-		y.close()
+		y.Close()
 	}
 
 	return nil
 }
 
 // divide X into k subsets until target is achived
-func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset) {
+func divideNconquer(ctx context.Context, X *dataset, target uint64) (Y []*dataset) {
 	// check if target is met or context is canceled
 	if X.total <= target || ctx.Err() != nil {
-		return []dataset{X}
+		return []*dataset{X}
 	}
 
 	// create sample
-	data := sample(X.rowReader, int(X.total), 50_000)
-	X.restart()
+	data := sample(X.ReadRow, int(X.total), 50_000)
+	X.Reset()
 
 	// create centroids
 	centroids := kMeans(data, 2)
 	centroidsMatrix := compute.NewMatrix(centroids)
 
 	// create dataset writers
-	writerList := make([]func(vector []uint8), len(centroids))
-	finalizerList := make([]func() dataset, len(centroids))
-	Y = make([]dataset, len(centroids))
+	dataWriterList := make([]*createDataset, len(centroids))
 	var err error
 	for idx := range len(centroids) {
-		writerList[idx], finalizerList[idx], err = newDataset(X.vectorsize, X.folderpath)
+		dataWriterList[idx], err = newDataset(X.vectorsize, X.folderpath)
 		if err != nil {
 			logger.Sugar().Fatalf("create data subset writer exception: %v", err)
 		}
@@ -111,12 +108,11 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 
 	// progress bar
 	bar := progressbar.Default(int64(X.total), "Dataset Centroid assignment")
-	defer bar.Close()
 
 	// split dataset
 	minibatch := make([][]uint8, 0, config.BATCH_SIZE_CACHE)
 	for {
-		vector := X.rowReader()
+		vector := X.ReadRow()
 		if vector == nil {
 			break
 		}
@@ -127,7 +123,7 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 		dataMatrix := compute.NewMatrix(minibatch)
 		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)
 		for idx, nearestCentroidIdx := range idxList {
-			writerList[nearestCentroidIdx](minibatch[idx])
+			dataWriterList[nearestCentroidIdx].WriteRow(minibatch[idx])
 		}
 		bar.Add(len(idxList))
 		minibatch = make([][]uint8, 0, config.BATCH_SIZE_CACHE)
@@ -136,15 +132,18 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 		dataMatrix := compute.NewMatrix(minibatch)
 		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)
 		for idx, nearestCentroidIdx := range idxList {
-			writerList[nearestCentroidIdx](minibatch[idx])
+			dataWriterList[nearestCentroidIdx].WriteRow(minibatch[idx])
 		}
 		bar.Add(len(idxList))
 	}
+	bar.Close()
 
 	// divide and conquer
-	Y = make([]dataset, 0, len(finalizerList)*2)
-	for _, finalizer := range finalizerList {
-		Y = append(Y, divideNconquer(ctx, finalizer(), target)...)
+	Y = make([]*dataset, 0, len(dataWriterList)*2)
+	for _, dataWriter := range dataWriterList {
+		X := dataWriter.Finalize()
+		Y = append(Y, divideNconquer(ctx, X, target)...)
+		X.Close()
 	}
 
 	return Y

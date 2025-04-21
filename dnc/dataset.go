@@ -14,27 +14,12 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-type dataset struct {
-	vectorsize int
-	folderpath string
-
-	vector    []uint8
-	total     uint64
-	rowReader func() (vector []uint8)
-	restart   func()
-	close     func()
-}
-
-func newDataset(vectorSize int, folderPath string) (
-	rowWriter func(vector []uint8),
-	finalize func() dataset,
-	err error,
-) {
+func newDataset(vectorSize int, folderPath string) (*createDataset, error) {
 	// create empty cache file
 	path := filepath.Join(folderPath, fmt.Sprintf("%d.cache", rand.Uint64()))
 	file, err := os.Create(path)
 	if err != nil {
-		return nil, nil, errors.Join(errors.New("failed to create cache file"), err)
+		return nil, errors.Join(errors.New("failed to create cache file"), err)
 	}
 
 	// create encoder
@@ -46,85 +31,135 @@ func newDataset(vectorSize int, folderPath string) (
 	if err != nil {
 		file.Close()
 		os.Remove(path)
-		return nil, nil, errors.Join(errors.New("failed to create zstd cache encoder"), err)
+		return nil, errors.Join(errors.New("failed to create zstd cache encoder"), err)
 	}
 
 	// buffer writes
 	encoderBuffer := bufio.NewWriterSize(encoder, vectorSize*config.BATCH_SIZE_CACHE)
 
-	// create writer
-	totalCount := uint64(0)
-	rowWriter = func(vector []uint8) {
-		encoderBuffer.Write(vector)
-		totalCount++
+	// dataset creator
+	return &createDataset{
+		vectorsize:    vectorSize,
+		folderpath:    folderPath,
+		file:          file,
+		encoder:       encoder,
+		encoderBuffer: encoderBuffer,
+	}, nil
+}
+
+type createDataset struct {
+	vectorsize int
+	folderpath string
+
+	file          *os.File
+	encoder       *zstd.Encoder
+	encoderBuffer *bufio.Writer
+
+	total uint64
+}
+
+func (c *createDataset) WriteRow(vector []uint8) {
+	c.encoderBuffer.Write(vector)
+	c.total++
+}
+
+func (c *createDataset) Finalize() *dataset {
+	// finish writing to file
+	c.encoderBuffer.Flush()
+	c.encoder.Close()
+	c.file.Sync()
+
+	// create dataset
+	X := &dataset{
+		vectorsize:    c.vectorsize,
+		folderpath:    c.folderpath,
+		file:          c.file,
+		decoder:       nil,
+		decoderBuffer: nil,
+		centroid:      nil,
+		total:         c.total,
 	}
 
-	// create finializer
-	finalize = func() dataset {
-		// finish writing to file
-		encoderBuffer.Flush()
-		encoder.Close()
-		file.Sync()
+	// move reader to start
+	X.Reset()
 
-		// move to start of cache file
-		file.Seek(0, io.SeekStart)
-		// create decoder
-		decoder, err := zstd.NewReader(
-			file,
-			zstd.IgnoreChecksum(true),
-		)
-		if err != nil {
-			logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
-		}
+	// set centroid vector
+	X.centroid = kMeans(sample(X.ReadRow, int(c.total), 50_000), 1)[0]
 
-		// Buffer read
-		decoderBuffer := bufio.NewReaderSize(decoder, vectorSize*config.BATCH_SIZE_CACHE)
+	// move reader to start
+	X.Reset()
 
-		// create reader
-		rowReader := func() (vector []uint8) {
-			vector = make([]uint8, vectorSize)
-			_, err := io.ReadFull(decoderBuffer, vector)
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				logger.Sugar().Fatalf("Failed to read vector from zstd cache decoder: %v", err)
-			}
-			return vector
-		}
+	// clear writer
+	c.encoderBuffer = nil
+	c.encoder = nil
+	c.total = 0
 
-		// create restart
-		restart := func() {
-			decoder.Close()
-			// move to start of cache file
-			file.Seek(0, io.SeekStart)
-			// create decoder
-			decoder, err = zstd.NewReader(
-				file,
-				zstd.IgnoreChecksum(true),
-			)
-			if err != nil {
-				logger.Sugar().Fatalf("Failed to create zstd cache decoder: %v", err)
-			}
-			decoderBuffer = bufio.NewReaderSize(decoder, vectorSize*config.BATCH_SIZE_CACHE)
-		}
+	return X
+}
 
-		// create closer
-		close := func() {
-			decoder.Close()
-			file.Close()
-			os.Remove(path)
-		}
+type dataset struct {
+	vectorsize int
+	folderpath string
 
-		// calculate centroid
-		vector := kMeans(sample(rowReader, int(totalCount), 50_000), 1)[0]
-		restart()
+	file          *os.File
+	decoder       *zstd.Decoder
+	decoderBuffer *bufio.Reader
 
-		return dataset{
-			vectorSize, folderPath,
-			vector, totalCount, rowReader, restart, close,
-		}
+	centroid []uint8
+	total    uint64
+}
+
+func (d *dataset) ReadRow() []uint8 {
+	if d.decoderBuffer == nil {
+		logger.Sugar().Fatalf("File is not open for decoder")
 	}
+	vector := make([]uint8, d.vectorsize)
+	_, err := io.ReadFull(d.decoderBuffer, vector)
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		logger.Sugar().Fatalf("Failed to read vector from decoder: %v", err)
+	}
+	return vector
+}
 
-	return rowWriter, finalize, nil
+func (d *dataset) Reset() (err error) {
+	if d.decoder != nil {
+		d.decoder.Close()
+	}
+	if d.file == nil {
+		return errors.New("file is not open")
+	}
+	// move to start of cache file
+	d.file.Seek(0, io.SeekStart)
+	// create decoder
+	d.decoder, err = zstd.NewReader(
+		d.file,
+		zstd.IgnoreChecksum(true),
+	)
+	if err != nil {
+		return errors.Join(errors.New("create zstd file decoder"), err)
+	}
+	d.decoderBuffer = bufio.NewReaderSize(d.decoder, d.vectorsize*config.BATCH_SIZE_CACHE)
+	return nil
+}
+
+func (d *dataset) Close() {
+	d.decoderBuffer = nil
+	d.vectorsize = 0
+	d.centroid = nil
+	d.total = 0
+	if d.decoder != nil {
+		d.decoder.Close()
+		d.decoder = nil
+	}
+	if d.file != nil {
+		d.file.Close()
+		d.file = nil
+	}
+	if d.folderpath != "" {
+		os.Remove(d.folderpath)
+		d.folderpath = ""
+	}
 }
