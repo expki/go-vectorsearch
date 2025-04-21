@@ -27,6 +27,8 @@ func newDataset(vectorSize int, folderPath string) (*createDataset, error) {
 		file,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithEncoderCRC(false),
+		zstd.WithEncoderConcurrency(1),
+		zstd.WithLowerEncoderMem(true),
 	)
 	if err != nil {
 		file.Close()
@@ -137,6 +139,8 @@ func (d *dataset) Reset() (err error) {
 	d.decoder, err = zstd.NewReader(
 		d.file,
 		zstd.IgnoreChecksum(true),
+		zstd.WithDecoderLowmem(true),
+		zstd.WithDecoderConcurrency(1),
 	)
 	if err != nil {
 		return errors.Join(errors.New("create zstd file decoder"), err)

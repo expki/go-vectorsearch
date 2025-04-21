@@ -9,9 +9,10 @@ var encoder *zstd.Encoder = func() *zstd.Encoder {
 	encoder, err := zstd.NewWriter(
 		nil,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
-		zstd.WithSingleSegment(true),
 		zstd.WithEncoderCRC(false),
-		zstd.WithNoEntropyCompression(true),
+		zstd.WithEncoderConcurrency(1),
+		zstd.WithLowerEncoderMem(true),
+		zstd.WithSingleSegment(true),
 	)
 	if err != nil {
 		panic(err)
@@ -23,6 +24,8 @@ var decoder *zstd.Decoder = func() *zstd.Decoder {
 	decoder, err := zstd.NewReader(
 		nil,
 		zstd.IgnoreChecksum(true),
+		zstd.WithDecoderLowmem(true),
+		zstd.WithDecoderConcurrency(1),
 	)
 	if err != nil {
 		panic(err)
