@@ -50,7 +50,8 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar := multibar.AddBar(
 		-1,
 		mpb.PrependDecorators(
-			decor.Name("Read database embeddings"),
+			decor.Name("Read database embeddings:"),
+			decor.CountersNoUnit("%d"),
 		),
 	)
 	var results []result
@@ -129,7 +130,8 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar = multibar.AddBar(
 		-1,
 		mpb.PrependDecorators(
-			decor.Name("Update database embeddings"),
+			decor.Name("Update database embeddings:"),
+			decor.CountersNoUnit("%d"),
 		),
 	)
 	var updates []update
@@ -198,7 +200,8 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	bar := multibar.AddBar(
 		int64(X.total),
 		mpb.PrependDecorators(
-			decor.Name("Dataset Centroid assignment"),
+			decor.Name("Dataset Centroid assignment:"),
+			decor.CountersNoUnit("%d"),
 		),
 	)
 
