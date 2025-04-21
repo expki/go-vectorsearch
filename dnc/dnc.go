@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 
 	"github.com/expki/go-vectorsearch/compute"
@@ -104,29 +103,39 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 	}
 
 	// create new cosine similarity graph
-	cosineSim, closeGraph := compute.VectorMatrixCosineSimilarity()
+	cosineSim, closeGraph := compute.MatrixCosineSimilarity()
 	defer closeGraph()
 
-	// split dataset
+	// progress bar
 	bar := progressbar.Default(int64(X.total), "Dataset Centroid assignment")
 	defer bar.Close()
+
+	// split dataset
+	minibatch := make([][]uint8, 0, config.BATCH_SIZE_CACHE)
 	for {
 		vector := X.rowReader()
 		if vector == nil {
 			break
 		}
-		dataVector := compute.NewTensor(vector)
-		centroidSimilarities := cosineSim(dataVector.Clone(), centroidsMatrix.Clone())
-		nearestCentroidIdx := 0
-		nearestCentroidSimilarity := float32(math.MaxFloat32)
-		for centroidIdx, centroidSimilarity := range centroidSimilarities {
-			if centroidSimilarity < nearestCentroidSimilarity {
-				nearestCentroidIdx = centroidIdx
-				nearestCentroidSimilarity = centroidSimilarity
-			}
+		minibatch = append(minibatch, vector)
+		if len(minibatch) < config.BATCH_SIZE_CACHE {
+			continue
 		}
-		writerList[nearestCentroidIdx](vector)
-		bar.Add(1)
+		dataMatrix := compute.NewMatrix(minibatch)
+		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)
+		for idx, nearestCentroidIdx := range idxList {
+			writerList[nearestCentroidIdx](minibatch[idx])
+		}
+		bar.Add(len(idxList))
+		minibatch = make([][]uint8, 0, config.BATCH_SIZE_CACHE)
+	}
+	if len(minibatch) > 0 {
+		dataMatrix := compute.NewMatrix(minibatch)
+		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)
+		for idx, nearestCentroidIdx := range idxList {
+			writerList[nearestCentroidIdx](minibatch[idx])
+		}
+		bar.Add(len(idxList))
 	}
 
 	// divide and conquer
