@@ -21,6 +21,21 @@ import (
 var queue = make(chan struct{}, runtime.NumCPU())
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
+	// get embedding count
+	var total int64
+	err = db.WithContext(ctx).Clauses(dbresolver.Read).
+		Model(&database.Embedding{}).
+		Joins("INNER JOIN documents ON documents.id = embeddings.document_id").
+		Where("documents.category_id = ?", categoryID).
+		Count(&total).
+		Error
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return err
+	} else {
+		return errors.Join(errors.New("failed to count documents"), err)
+	}
+
 	// get vector size
 	var embedding database.Embedding
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
@@ -48,10 +63,13 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		Vector database.VectorField
 	}
 	bar := multibar.AddBar(
-		-1,
+		total,
 		mpb.PrependDecorators(
 			decor.Name("Read database embeddings:"),
-			decor.CountersNoUnit("%d"),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 5),
 		),
 	)
 	var results []result
@@ -128,10 +146,13 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		Vector     database.VectorField
 	}
 	bar = multibar.AddBar(
-		-1,
+		total,
 		mpb.PrependDecorators(
 			decor.Name("Update database embeddings:"),
-			decor.CountersNoUnit("%d"),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 5),
 		),
 	)
 	var updates []update
@@ -201,7 +222,10 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 		int64(X.total),
 		mpb.PrependDecorators(
 			decor.Name("Dataset Centroid assignment:"),
-			decor.CountersNoUnit("%d"),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 5),
 		),
 	)
 

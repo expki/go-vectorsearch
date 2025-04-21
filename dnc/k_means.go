@@ -41,7 +41,7 @@ func kMeans(multibar *mpb.Progress, data [][]uint8, k int) [][]uint8 {
 			-1,
 			mpb.PrependDecorators(
 				decor.Name("K-Means Clustering:"),
-				decor.CountersNoUnit("%d"),
+				decor.CountersNoUnit("%d / %d"),
 			),
 		)
 	}
