@@ -71,7 +71,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 5),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 30),
 		),
 	)
 	start := time.Now()
@@ -157,7 +157,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 5),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 30),
 		),
 	)
 	start = time.Now()
