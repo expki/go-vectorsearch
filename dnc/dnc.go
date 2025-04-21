@@ -144,6 +144,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to update database centroids"), err)
 	}
 
+	// compute
+	calculate, done := compute.MatrixCosineSimilarity()
+	defer done()
+	centroidMatrix := compute.NewMatrix(centroids)
+
 	// re-assing to new centroids
 	type update struct {
 		ID         uint64
@@ -168,8 +173,40 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		Where("documents.category_id = ?", categoryID).
 		Select("embeddings.id as id, embeddings.centroid_id as centroid_id, embeddings.vector as vector").
 		FindInBatches(&updates, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-			// todo: reassign documents
-			//db.Model(&User{}).Where("id IN ?", ids).Update("email", "newemail@example.com")
+			// caclulate nearest centroids
+			data := make([][]uint8, len(updates))
+			for idx, embedding := range updates {
+				data[idx] = embedding.Vector
+			}
+			dataMatrix := compute.NewMatrix(data)
+			_, centroidIndexes := calculate(centroidMatrix.Clone(), dataMatrix)
+
+			// group embeddings by nearest centroids
+			updateMap := make(map[uint64][]uint64, len(centroids))
+			for dataIdx, centroidIdx := range centroidIndexes {
+				current, ok := updateMap[uint64(centroidIdx)]
+				if !ok {
+					current = make([]uint64, 0)
+				}
+				updateMap[uint64(centroidIdx)] = append(current, updates[dataIdx].ID)
+			}
+
+			// update embeddings in database
+			for centroidID, embeddingIDs := range updateMap {
+				err = db.WithContext(ctx).Clauses(dbresolver.Write).
+					Model(&database.Embedding{}).
+					Where("id IN ?", embeddingIDs).
+					Update("centroid_id", centroidID).
+					Error
+				if err == nil {
+				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+					return err
+				} else {
+					return errors.Join(errors.New("failed to update database embeddings"), err)
+				}
+			}
+
+			// increment progress bar
 			now := time.Now()
 			bar.EwmaIncrBy(len(updates), now.Sub(start))
 			start = now
