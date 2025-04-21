@@ -185,11 +185,12 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			// group embeddings by nearest centroids
 			updateMap := make(map[uint64][]uint64, len(centroids))
 			for dataIdx, centroidIdx := range centroidIndexes {
-				current, ok := updateMap[uint64(centroidIdx)]
+				centroidID := dbCentroids[centroidIdx].ID
+				current, ok := updateMap[centroidID]
 				if !ok {
 					current = make([]uint64, 0)
 				}
-				updateMap[uint64(centroidIdx)] = append(current, updates[dataIdx].ID)
+				updateMap[centroidID] = append(current, updates[dataIdx].ID)
 			}
 
 			// update embeddings in database
