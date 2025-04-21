@@ -11,7 +11,8 @@ import (
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/database"
 	"github.com/expki/go-vectorsearch/logger"
-	"github.com/schollz/progressbar/v3"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
@@ -39,12 +40,19 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to create file writer"), err)
 	}
 
+	multibar := mpb.NewWithContext(ctx)
+
 	// read all data
 	type result struct {
 		ID     uint64
 		Vector database.VectorField
 	}
-	bar := progressbar.Default(-1, "Read database embeddings")
+	bar := multibar.AddBar(
+		-1,
+		mpb.PrependDecorators(
+			decor.Name("Read database embeddings"),
+		),
+	)
 	var results []result
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
 		Model(&database.Embedding{}).
@@ -55,11 +63,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			for _, item := range results {
 				dataWriter.WriteRow(item.Vector)
 			}
-			bar.Add(len(results))
+			bar.IncrBy(len(results))
 			return nil
 		}).
 		Error
-	bar.Close()
+	bar.EnableTriggerComplete()
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -72,7 +80,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	Y := make(chan []uint8)
 	itteration := &atomic.Int64{}
 	itteration.Add(1)
-	go divideNconquer(ctx, itteration, config.CENTROID_SIZE, X, Y)
+	go divideNconquer(ctx, multibar, itteration, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
 	centroids := make([][]uint8, 0)
@@ -94,7 +102,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 
 	// update database centroids
 	for idx, centroid := range centroids {
-		if len(dbCentroids) == idx+1 {
+		if len(dbCentroids) < idx+1 {
 			dbCentroids = append(dbCentroids, database.Centroid{
 				CategoryID: categoryID,
 			})
@@ -118,7 +126,12 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		CentroidID uint64
 		Vector     database.VectorField
 	}
-	bar = progressbar.Default(-1, "Update database embeddings")
+	bar = multibar.AddBar(
+		-1,
+		mpb.PrependDecorators(
+			decor.Name("Update database embeddings"),
+		),
+	)
 	var updates []update
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
 		Model(&database.Embedding{}).
@@ -128,11 +141,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		FindInBatches(&updates, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 			// todo: reassign documents
 			//db.Model(&User{}).Where("id IN ?", ids).Update("email", "newemail@example.com")
-			bar.Add(len(updates))
+			bar.IncrBy(len(updates))
 			return nil
 		}).
 		Error
-	bar.Close()
+	bar.EnableTriggerComplete()
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return err
@@ -143,7 +156,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 }
 
 // divide X into k subsets until target is achived
-func divideNconquer(ctx context.Context, itteration *atomic.Int64, targetSize uint64, X *dataset, Y chan<- []uint8) {
+func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *atomic.Int64, targetSize uint64, X *dataset, Y chan<- []uint8) {
 	queue <- struct{}{}
 	defer func() {
 		X.Close()
@@ -164,7 +177,7 @@ func divideNconquer(ctx context.Context, itteration *atomic.Int64, targetSize ui
 	X.Reset()
 
 	// create centroids
-	centroids := kMeans(data, 2)
+	centroids := kMeans(multibar, data, 2)
 	centroidsMatrix := compute.NewMatrix(centroids)
 
 	// create dataset writers
@@ -182,7 +195,12 @@ func divideNconquer(ctx context.Context, itteration *atomic.Int64, targetSize ui
 	defer closeGraph()
 
 	// progress bar
-	bar := progressbar.Default(int64(X.total), "Dataset Centroid assignment")
+	bar := multibar.AddBar(
+		int64(X.total),
+		mpb.PrependDecorators(
+			decor.Name("Dataset Centroid assignment"),
+		),
+	)
 
 	// split dataset
 	minibatch := make([][]uint8, 0, config.BATCH_SIZE_CACHE)
@@ -200,7 +218,7 @@ func divideNconquer(ctx context.Context, itteration *atomic.Int64, targetSize ui
 		for idx, nearestCentroidIdx := range idxList {
 			dataWriterList[nearestCentroidIdx].WriteRow(minibatch[idx])
 		}
-		bar.Add(len(idxList))
+		bar.IncrBy(len(idxList))
 		minibatch = make([][]uint8, 0, config.BATCH_SIZE_CACHE)
 	}
 	if len(minibatch) > 0 {
@@ -209,15 +227,15 @@ func divideNconquer(ctx context.Context, itteration *atomic.Int64, targetSize ui
 		for idx, nearestCentroidIdx := range idxList {
 			dataWriterList[nearestCentroidIdx].WriteRow(minibatch[idx])
 		}
-		bar.Add(len(idxList))
+		bar.IncrBy(len(idxList))
 	}
-	bar.Close()
+	bar.EnableTriggerComplete()
 
 	// divide and conquer
 	for _, dataWriter := range dataWriterList {
 		subsetX := dataWriter.Finalize()
 		itteration.Add(1)
-		go divideNconquer(ctx, itteration, targetSize, subsetX, Y)
+		go divideNconquer(ctx, multibar, itteration, targetSize, subsetX, Y)
 	}
 
 	return

@@ -84,7 +84,7 @@ func (c *createDataset) Finalize() *dataset {
 	X.Reset()
 
 	// set centroid vector
-	X.centroid = kMeans(sample(X.ReadRow, int(c.total), 50_000), 1)[0]
+	X.centroid = kMeans(nil, sample(X.ReadRow, int(c.total), 50_000), 1)[0]
 
 	// move reader to start
 	X.Reset()
