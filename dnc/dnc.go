@@ -36,19 +36,22 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// read all data
+	type result struct {
+		ID     uint64
+		Vector database.VectorField
+	}
 	bar := progressbar.Default(-1, "Read database embeddings")
-	var documents []database.Document
+	var results []result
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
-		Model(&database.Document{}).
-		Preload("Embeddings").
-		Where("category_id = ?", categoryID).
-		FindInBatches(&documents, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
-			for _, document := range documents {
-				for _, embedding := range document.Embeddings {
-					dataWriter(embedding.Vector)
-				}
-				bar.Add(len(document.Embeddings))
+		Model(&database.Embedding{}).
+		Joins("INNER JOIN documents ON documents.id = embeddings.document_id").
+		Where("documents.category_id = ?", categoryID).
+		Select("embeddings.id as id, embeddings.vector as vector").
+		FindInBatches(&results, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
+			for _, item := range results {
+				dataWriter(item.Vector)
 			}
+			bar.Add(len(results))
 			return nil
 		}).
 		Error
