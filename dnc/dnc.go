@@ -84,7 +84,7 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 	}
 
 	// create sample
-	data := sample(X.rowReader, int(X.total), 100_000)
+	data := sample(X.rowReader, int(X.total), 50_000)
 	X.restart()
 
 	// create centroids
@@ -126,6 +126,7 @@ func divideNconquer(ctx context.Context, X dataset, target uint64) (Y []dataset)
 			}
 		}
 		writerList[nearestCentroidIdx](vector)
+		bar.Add(1)
 	}
 
 	// divide and conquer

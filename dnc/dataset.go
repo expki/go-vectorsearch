@@ -117,7 +117,7 @@ func newDataset(vectorSize int, folderPath string) (
 		}
 
 		// calculate centroid
-		vector := kMeans(sample(rowReader, int(totalCount), 100_000), 1)[0]
+		vector := kMeans(sample(rowReader, int(totalCount), 50_000), 1)[0]
 		restart()
 
 		return dataset{
