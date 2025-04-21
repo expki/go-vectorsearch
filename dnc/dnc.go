@@ -20,7 +20,8 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
-var queue = make(chan struct{}, max(1, runtime.NumCPU()/2))
+// TODO: limit memory usage
+var queue = make(chan struct{}, max(1, runtime.NumCPU()))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
