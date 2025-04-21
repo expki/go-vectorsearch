@@ -71,7 +71,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_GO, 5),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 5),
 		),
 	)
 	start := time.Now()
@@ -85,7 +85,9 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			for _, item := range results {
 				dataWriter.WriteRow(item.Vector)
 			}
-			bar.EwmaIncrBy(len(results), time.Since(start))
+			now := time.Now()
+			bar.EwmaIncrBy(len(results), now.Sub(start))
+			start = now
 			return nil
 		}).
 		Error
@@ -155,7 +157,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_GO, 5),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 5),
 		),
 	)
 	start = time.Now()
@@ -168,7 +170,9 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		FindInBatches(&updates, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) (err error) {
 			// todo: reassign documents
 			//db.Model(&User{}).Where("id IN ?", ids).Update("email", "newemail@example.com")
-			bar.EwmaIncrBy(len(updates), time.Since(start))
+			now := time.Now()
+			bar.EwmaIncrBy(len(updates), now.Sub(start))
+			start = now
 			return nil
 		}).
 		Error
