@@ -20,7 +20,7 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
-var queue = make(chan struct{}, runtime.NumCPU())
+var queue = make(chan struct{}, max(1, runtime.NumCPU()/2))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
@@ -52,7 +52,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// create dataset writer
-	dataWriter, err := newDataset(len(embedding.Vector), folderPath)
+	dataWriter, err := newDataset(&atomic.Int64{}, len(embedding.Vector), folderPath)
 	if err != nil {
 		return errors.Join(errors.New("failed to create file writer"), err)
 	}
@@ -67,11 +67,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar := multibar.AddBar(
 		total,
 		mpb.PrependDecorators(
-			decor.Name("Read embeddings:"),
+			decor.Name("Read embeddings: "),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 30),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 90),
 		),
 	)
 	start := time.Now()
@@ -102,9 +102,9 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	// divide and conquer
 	X := dataWriter.Finalize()
 	Y := make(chan []uint8)
-	itteration := &atomic.Int64{}
-	itteration.Add(1)
-	go divideNconquer(ctx, multibar, itteration, &atomic.Uint64{}, config.CENTROID_SIZE, X, Y)
+	concurrent := &atomic.Int64{}
+	concurrent.Add(1)
+	go divideNconquer(ctx, multibar, concurrent, &atomic.Uint64{}, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
 	centroids := make([][]uint8, 0)
@@ -153,11 +153,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	bar = multibar.AddBar(
 		total,
 		mpb.PrependDecorators(
-			decor.Name("Update embeddings:"),
+			decor.Name("Update embeddings: "),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 30),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 90),
 		),
 	)
 	start = time.Now()
@@ -187,12 +187,12 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 }
 
 // divide X into k subsets until target is achived
-func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
+func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
 	queue <- struct{}{}
 	defer func() {
 		X.Close()
 		<-queue
-		if itteration.Add(-1) <= 0 {
+		if concurrent.Add(-1) <= 0 {
 			close(Y)
 		}
 	}()
@@ -215,7 +215,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	dataWriterList := make([]*createDataset, len(centroids))
 	var err error
 	for idx := range len(centroids) {
-		dataWriterList[idx], err = newDataset(X.vectorsize, X.folderpath)
+		dataWriterList[idx], err = newDataset(concurrent, X.vectorsize, X.folderpath)
 		if err != nil {
 			logger.Sugar().Fatalf("create data subset writer exception: %v", err)
 		}
@@ -229,11 +229,11 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	bar := multibar.AddBar(
 		int64(X.total),
 		mpb.PrependDecorators(
-			decor.Name(fmt.Sprintf("%d split embeddings:", instance.Add(1))),
+			decor.Name(fmt.Sprintf("%d split embeddings: ", instance.Add(1))),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_GO, 5),
+			decor.EwmaETA(decor.ET_STYLE_GO, 90),
 		),
 	)
 
@@ -269,8 +269,8 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, itteration *ato
 	// divide and conquer
 	for _, dataWriter := range dataWriterList {
 		subsetX := dataWriter.Finalize()
-		itteration.Add(1)
-		go divideNconquer(ctx, multibar, itteration, instance, targetSize, subsetX, Y)
+		concurrent.Add(1)
+		go divideNconquer(ctx, multibar, concurrent, instance, targetSize, subsetX, Y)
 	}
 
 	return

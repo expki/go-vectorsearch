@@ -8,13 +8,15 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync/atomic"
 
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/klauspost/compress/zstd"
 )
 
-func newDataset(vectorSize int, folderPath string) (*createDataset, error) {
+func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*createDataset, error) {
 	// create empty cache file
 	path := filepath.Join(folderPath, fmt.Sprintf("%d.cache", rand.Uint64()))
 	file, err := os.Create(path)
@@ -27,7 +29,12 @@ func newDataset(vectorSize int, folderPath string) (*createDataset, error) {
 		file,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithEncoderCRC(false),
-		zstd.WithEncoderConcurrency(1),
+		zstd.WithEncoderConcurrency(
+			max(
+				1,
+				runtime.NumCPU()-int(concurrent.Load()),
+			),
+		),
 		zstd.WithLowerEncoderMem(true),
 	)
 	if err != nil {
@@ -46,6 +53,7 @@ func newDataset(vectorSize int, folderPath string) (*createDataset, error) {
 		file:          file,
 		encoder:       encoder,
 		encoderBuffer: encoderBuffer,
+		concurrent:    concurrent,
 	}, nil
 }
 
@@ -56,6 +64,7 @@ type createDataset struct {
 	file          *os.File
 	encoder       *zstd.Encoder
 	encoderBuffer *bufio.Writer
+	concurrent    *atomic.Int64
 
 	total uint64
 }
@@ -78,6 +87,7 @@ func (c *createDataset) Finalize() *dataset {
 		file:          c.file,
 		decoder:       nil,
 		decoderBuffer: nil,
+		concurrent:    c.concurrent,
 		centroid:      nil,
 		total:         c.total,
 	}
@@ -106,6 +116,7 @@ type dataset struct {
 	file          *os.File
 	decoder       *zstd.Decoder
 	decoderBuffer *bufio.Reader
+	concurrent    *atomic.Int64
 
 	centroid []uint8
 	total    uint64
@@ -140,7 +151,12 @@ func (d *dataset) Reset() (err error) {
 		d.file,
 		zstd.IgnoreChecksum(true),
 		zstd.WithDecoderLowmem(true),
-		zstd.WithDecoderConcurrency(1),
+		zstd.WithDecoderConcurrency(
+			max(
+				1,
+				min(4, runtime.NumCPU()-int(d.concurrent.Load())),
+			),
+		),
 	)
 	if err != nil {
 		return errors.Join(errors.New("create zstd file decoder"), err)
