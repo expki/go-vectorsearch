@@ -87,8 +87,12 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	X.Reset()
 
 	// clear writer
+	c.folderpath = ""
+	c.filepath = ""
 	c.fileBuffer = nil
-	c.total = 0
+	c.file = nil
+	c.concurrent = nil
+	c = nil
 
 	return X
 }

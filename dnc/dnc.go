@@ -104,7 +104,6 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	Y := make(chan []uint8)
 	concurrent := &atomic.Int64{}
 	concurrent.Add(1)
-	queue <- struct{}{}
 	go divideNconquer(ctx, multibar, concurrent, &atomic.Uint64{}, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
@@ -229,12 +228,15 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	} else {
 		return errors.Join(errors.New("failed to read database embeddings"), err)
 	}
+
+	multibar.Wait()
+	logger.Sugar().Info("Refresh centroids completed")
 	return nil
 }
 
 // divide X into k subsets until target is achived
 func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
-	id := instance.Add(1)
+	queue <- struct{}{}
 	defer func() {
 		<-queue
 		if concurrent.Add(-1) <= 0 {
@@ -242,10 +244,12 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 		}
 	}()
 
+	id := instance.Add(1)
+
 	// check if target is met or context is canceled
 	if X.total <= targetSize || ctx.Err() != nil {
-		X.Close()
 		Y <- X.centroid
+		X.Close()
 		return
 	}
 
@@ -326,7 +330,6 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	for _, dataWriter := range dataWriterList {
 		subsetX := dataWriter.Finalize(multibar, id)
 		concurrent.Add(1)
-		queue <- struct{}{}
 		go divideNconquer(ctx, multibar, concurrent, instance, targetSize, subsetX, Y)
 	}
 
