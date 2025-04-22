@@ -287,9 +287,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 			decor.Name(fmt.Sprintf("%d split embeddings: ", instance.Add(1))),
 			decor.CountersNoUnit("%d / %d"),
 		),
-		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_GO, 300),
-		),
+		mpb.BarRemoveOnComplete(),
 	)
 
 	// split dataset
