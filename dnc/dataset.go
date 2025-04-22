@@ -55,7 +55,7 @@ func (c *createDataset) WriteRow(vector []uint8) {
 	c.total++
 }
 
-func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
+func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) (initialize func() *dataset) {
 	// finish writing to file
 	c.fileBuffer.Flush()
 	c.file.Sync()
@@ -72,20 +72,6 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 		total:      c.total,
 	}
 
-	// move reader to start and set buffer
-	X.Reset()
-
-	// set centroid vector
-	X.centroid = kMeans(
-		multibar,
-		id,
-		sample(multibar, id, X.ReadRow, int(c.total), config.SAMPLE_SIZE),
-		1,
-	)[0]
-
-	// move reader to start
-	X.Reset()
-
 	// clear writer
 	c.folderpath = ""
 	c.filepath = ""
@@ -94,7 +80,23 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	c.concurrent = nil
 	c = nil
 
-	return X
+	return func() *dataset {
+		// move reader to start and set buffer
+		X.Reset()
+
+		// set centroid vector
+		X.centroid = kMeans(
+			multibar,
+			id,
+			sample(multibar, id, X.ReadRow, int(X.total), config.SAMPLE_SIZE),
+			1,
+		)[0]
+
+		// move reader to start
+		X.Reset()
+
+		return X
+	}
 }
 
 type dataset struct {
