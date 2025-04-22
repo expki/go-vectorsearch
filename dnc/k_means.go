@@ -28,14 +28,15 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 2: Randomly initialize unique centroids superset
 	centroids := make([][]uint8, 0, min(len(data), k*2))
-	used := make(map[int]struct{}, k)
-	for len(centroids) < k {
+	used := make(map[int]struct{}, k*2)
+	for len(centroids) < k*2 {
 		i := random.Intn(len(data))
 		if _, ok := used[i]; !ok {
 			used[i] = struct{}{}
 			centroids = append(centroids, data[i])
 		}
 	}
+	used = nil
 
 	// progress bar
 	bar := multibar.AddBar(
@@ -49,7 +50,13 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 3: Iterate superset until convergence
 	vectorLen := len(centroids[0])
-	counts := make([]int, k)
+	counts := make([]int, k*2)
+	sumVectors := make([][]float32, k*2)
+	meanVectors := make([][]float32, k*2)
+	for i := range k * 2 {
+		sumVectors[i] = make([]float32, vectorLen)
+		meanVectors[i] = make([]float32, vectorLen)
+	}
 	var converged bool
 	for !converged {
 		bar.Increment()
@@ -58,13 +65,6 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Find nearest centroid for each data point
 		_, centroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
-
-		// Prepare new centroids
-		sumVectors := make([][]float32, k)
-
-		for i := range sumVectors {
-			sumVectors[i] = make([]float32, vectorLen)
-		}
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -76,13 +76,12 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		// Compute means
-		meanVectors := make([][]float32, k)
 		for i := range sumVectors {
-			meanVectors[i] = make([]float32, vectorLen)
-			if counts[i] > 0 {
-				for j, sum := range sumVectors[i] {
-					meanVectors[i][j] = sum / float32(counts[i])
-				}
+			if counts[i] <= 0 {
+				continue
+			}
+			for j, sum := range sumVectors[i] {
+				meanVectors[i][j] = sum / float32(counts[i])
 			}
 		}
 
@@ -99,7 +98,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		centroids = newCentroids
-		counts = make([]int, k)
+		counts = make([]int, k*2)
 	}
 	bar.EnableTriggerComplete()
 
@@ -137,6 +136,8 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 6: Iterate set until convergence
 	counts = make([]int, k)
+	sumVectors = sumVectors[:k]
+	meanVectors = meanVectors[:k]
 	converged = false
 	for !converged {
 		bar.Increment()
@@ -145,13 +146,6 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Find nearest centroid for each data point
 		_, centroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
-
-		// Prepare new centroids
-		sumVectors := make([][]float32, k)
-
-		for i := range sumVectors {
-			sumVectors[i] = make([]float32, vectorLen)
-		}
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -163,13 +157,12 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		// Compute means
-		meanVectors := make([][]float32, k)
 		for i := range sumVectors {
-			meanVectors[i] = make([]float32, vectorLen)
-			if counts[i] > 0 {
-				for j, sum := range sumVectors[i] {
-					meanVectors[i][j] = sum / float32(counts[i])
-				}
+			if counts[i] <= 0 {
+				continue
+			}
+			for j, sum := range sumVectors[i] {
+				meanVectors[i][j] = sum / float32(counts[i])
 			}
 		}
 
@@ -186,7 +179,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		centroids = newCentroids
-		counts = make([]int, k)
+		counts = make([]int, k*2)
 	}
 	bar.EnableTriggerComplete()
 

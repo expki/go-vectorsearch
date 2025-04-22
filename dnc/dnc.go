@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 )
 
 // TODO: limit memory usage
-var queue = make(chan struct{}, max(1, runtime.NumCPU()/4))
+var queue = make(chan struct{}, 4) //max(1, runtime.NumCPU()/4))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
@@ -105,6 +104,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	Y := make(chan []uint8)
 	concurrent := &atomic.Int64{}
 	concurrent.Add(1)
+	queue <- struct{}{}
 	go divideNconquer(ctx, multibar, concurrent, &atomic.Uint64{}, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
@@ -235,8 +235,6 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 // divide X into k subsets until target is achived
 func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
 	id := instance.Add(1)
-
-	queue <- struct{}{}
 	defer func() {
 		<-queue
 		if concurrent.Add(-1) <= 0 {
@@ -328,6 +326,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	for _, dataWriter := range dataWriterList {
 		subsetX := dataWriter.Finalize(multibar, id)
 		concurrent.Add(1)
+		queue <- struct{}{}
 		go divideNconquer(ctx, multibar, concurrent, instance, targetSize, subsetX, Y)
 	}
 

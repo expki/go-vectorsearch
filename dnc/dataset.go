@@ -33,7 +33,7 @@ func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*c
 		zstd.WithEncoderConcurrency(
 			max(
 				1,
-				runtime.NumCPU()-int(concurrent.Load()),
+				1, //runtime.NumCPU()-int(concurrent.Load()),
 			),
 		),
 		zstd.WithLowerEncoderMem(true),
@@ -51,6 +51,7 @@ func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*c
 	return &createDataset{
 		vectorsize:    vectorSize,
 		folderpath:    folderPath,
+		filepath:      path,
 		file:          file,
 		encoder:       encoder,
 		encoderBuffer: encoderBuffer,
@@ -61,6 +62,7 @@ func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*c
 type createDataset struct {
 	vectorsize int
 	folderpath string
+	filepath   string
 
 	file          *os.File
 	encoder       *zstd.Encoder
@@ -85,6 +87,7 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	X := &dataset{
 		vectorsize:    c.vectorsize,
 		folderpath:    c.folderpath,
+		filepath:      c.filepath,
 		file:          c.file,
 		decoder:       nil,
 		decoderBuffer: nil,
@@ -118,6 +121,7 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 type dataset struct {
 	vectorsize int
 	folderpath string
+	filepath   string
 
 	file          *os.File
 	decoder       *zstd.Decoder
@@ -160,7 +164,7 @@ func (d *dataset) Reset() (err error) {
 		zstd.WithDecoderConcurrency(
 			max(
 				1,
-				min(4, runtime.NumCPU()-int(d.concurrent.Load())),
+				1, //min(4, runtime.NumCPU()-int(d.concurrent.Load())),
 			),
 		),
 	)
@@ -172,6 +176,7 @@ func (d *dataset) Reset() (err error) {
 }
 
 func (d *dataset) Close() {
+	d.folderpath = ""
 	d.decoderBuffer = nil
 	d.vectorsize = 0
 	d.centroid = nil
@@ -184,9 +189,9 @@ func (d *dataset) Close() {
 		d.file.Close()
 		d.file = nil
 	}
-	if d.folderpath != "" {
-		os.Remove(d.folderpath)
-		d.folderpath = ""
+	if d.filepath != "" {
+		os.Remove(d.filepath)
+		d.filepath = ""
 	}
 	runtime.GC()
 }
