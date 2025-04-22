@@ -17,6 +17,8 @@ if [ ! -f static/api/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/api/swagger-ui-bundle.js
 fi
 mkdir -p build
+printf "Building Legacy...\n"
+GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch-legacy .
 printf "Building AVX2...\n"
 GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch .
 printf "Building AVX512...\n"
