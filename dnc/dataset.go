@@ -13,7 +13,6 @@ import (
 
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/logger"
-	"github.com/klauspost/compress/zstd"
 	"github.com/vbauerster/mpb/v8"
 )
 
@@ -25,37 +24,17 @@ func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*c
 		return nil, errors.Join(errors.New("failed to create cache file"), err)
 	}
 
-	// create encoder
-	encoder, err := zstd.NewWriter(
-		file,
-		zstd.WithEncoderLevel(zstd.SpeedFastest),
-		zstd.WithEncoderCRC(false),
-		zstd.WithEncoderConcurrency(
-			max(
-				1,
-				1, //runtime.NumCPU()-int(concurrent.Load()),
-			),
-		),
-		zstd.WithLowerEncoderMem(true),
-	)
-	if err != nil {
-		file.Close()
-		os.Remove(path)
-		return nil, errors.Join(errors.New("failed to create zstd cache encoder"), err)
-	}
-
 	// buffer writes
-	encoderBuffer := bufio.NewWriterSize(encoder, vectorSize*config.BATCH_SIZE_CACHE)
+	encoderBuffer := bufio.NewWriterSize(file, vectorSize*config.BATCH_SIZE_CACHE)
 
 	// dataset creator
 	return &createDataset{
-		vectorsize:    vectorSize,
-		folderpath:    folderPath,
-		filepath:      path,
-		file:          file,
-		encoder:       encoder,
-		encoderBuffer: encoderBuffer,
-		concurrent:    concurrent,
+		vectorsize: vectorSize,
+		folderpath: folderPath,
+		filepath:   path,
+		file:       file,
+		fileBuffer: encoderBuffer,
+		concurrent: concurrent,
 	}, nil
 }
 
@@ -64,39 +43,36 @@ type createDataset struct {
 	folderpath string
 	filepath   string
 
-	file          *os.File
-	encoder       *zstd.Encoder
-	encoderBuffer *bufio.Writer
-	concurrent    *atomic.Int64
+	file       *os.File
+	fileBuffer *bufio.Writer
+	concurrent *atomic.Int64
 
 	total uint64
 }
 
 func (c *createDataset) WriteRow(vector []uint8) {
-	c.encoderBuffer.Write(vector)
+	c.fileBuffer.Write(vector)
 	c.total++
 }
 
 func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	// finish writing to file
-	c.encoderBuffer.Flush()
-	c.encoder.Close()
+	c.fileBuffer.Flush()
 	c.file.Sync()
 
 	// create dataset
 	X := &dataset{
-		vectorsize:    c.vectorsize,
-		folderpath:    c.folderpath,
-		filepath:      c.filepath,
-		file:          c.file,
-		decoder:       nil,
-		decoderBuffer: nil,
-		concurrent:    c.concurrent,
-		centroid:      nil,
-		total:         c.total,
+		vectorsize: c.vectorsize,
+		folderpath: c.folderpath,
+		filepath:   c.filepath,
+		file:       c.file,
+		fileBuffer: nil,
+		concurrent: c.concurrent,
+		centroid:   nil,
+		total:      c.total,
 	}
 
-	// move reader to start
+	// move reader to start and set buffer
 	X.Reset()
 
 	// set centroid vector
@@ -111,8 +87,7 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	X.Reset()
 
 	// clear writer
-	c.encoderBuffer = nil
-	c.encoder = nil
+	c.fileBuffer = nil
 	c.total = 0
 
 	return X
@@ -123,21 +98,20 @@ type dataset struct {
 	folderpath string
 	filepath   string
 
-	file          *os.File
-	decoder       *zstd.Decoder
-	decoderBuffer *bufio.Reader
-	concurrent    *atomic.Int64
+	file       *os.File
+	fileBuffer *bufio.Reader
+	concurrent *atomic.Int64
 
 	centroid []uint8
 	total    uint64
 }
 
 func (d *dataset) ReadRow() []uint8 {
-	if d.decoderBuffer == nil {
+	if d.fileBuffer == nil {
 		logger.Sugar().Fatalf("File is not open for decoder")
 	}
 	vector := make([]uint8, d.vectorsize)
-	_, err := io.ReadFull(d.decoderBuffer, vector)
+	_, err := io.ReadFull(d.fileBuffer, vector)
 	if err == io.EOF {
 		return nil
 	}
@@ -148,42 +122,24 @@ func (d *dataset) ReadRow() []uint8 {
 }
 
 func (d *dataset) Reset() (err error) {
-	if d.decoder != nil {
-		d.decoder.Close()
-	}
 	if d.file == nil {
 		return errors.New("file is not open")
 	}
 	// move to start of cache file
 	d.file.Seek(0, io.SeekStart)
-	// create decoder
-	d.decoder, err = zstd.NewReader(
-		d.file,
-		zstd.IgnoreChecksum(true),
-		zstd.WithDecoderLowmem(true),
-		zstd.WithDecoderConcurrency(
-			max(
-				1,
-				1, //min(4, runtime.NumCPU()-int(d.concurrent.Load())),
-			),
-		),
-	)
-	if err != nil {
-		return errors.Join(errors.New("create zstd file decoder"), err)
-	}
-	d.decoderBuffer = bufio.NewReaderSize(d.decoder, d.vectorsize*config.BATCH_SIZE_CACHE)
+	// create buffer
+	d.fileBuffer = bufio.NewReaderSize(d.file, d.vectorsize*config.BATCH_SIZE_CACHE)
 	return nil
 }
 
 func (d *dataset) Close() {
 	d.folderpath = ""
-	d.decoderBuffer = nil
+	d.fileBuffer = nil
 	d.vectorsize = 0
 	d.centroid = nil
 	d.total = 0
-	if d.decoder != nil {
-		d.decoder.Close()
-		d.decoder = nil
+	if d.fileBuffer != nil {
+		d.fileBuffer = nil
 	}
 	if d.file != nil {
 		d.file.Close()
