@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/expki/go-vectorsearch/compute"
+	"github.com/expki/go-vectorsearch/config"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -22,9 +23,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 1: Initialize utilities
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	var centroidMatrix compute.Matrix
-	var centroidIndexes []int
-	dataMatrix := compute.NewMatrix(data)
+	chunkedDataMatrix := chunkData(data, config.BATCH_SIZE_CACHE)
 	cosineSim, closeGraph := compute.MatrixCosineSimilarity()
 	defer closeGraph()
 
@@ -63,10 +62,14 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	for !converged {
 		bar.Increment()
 		// Create centroid matrix
-		centroidMatrix = compute.NewMatrix(centroids)
+		centroidMatrix := compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		_, centroidIndexes = cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+		centroidIndexes := make([]int, 0, len(data))
+		for _, dataMatrix := range chunkedDataMatrix {
+			_, chunkedCentroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+			centroidIndexes = append(centroidIndexes, chunkedCentroidIndexes...)
+		}
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -149,10 +152,14 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	for !converged {
 		bar.Increment()
 		// Create centroid matrix
-		centroidMatrix = compute.NewMatrix(centroids)
+		centroidMatrix := compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		_, centroidIndexes = cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+		centroidIndexes := make([]int, 0, len(data))
+		for _, dataMatrix := range chunkedDataMatrix {
+			_, chunkedCentroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+			centroidIndexes = append(centroidIndexes, chunkedCentroidIndexes...)
+		}
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -197,4 +204,13 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 7: Return converged set
 	return centroids
+}
+
+func chunkData(input [][]uint8, size int) []compute.Matrix {
+	chunks := make([]compute.Matrix, 0, (len(input)/size)+1)
+	for i := 0; i < len(input); i += size {
+		end := min(i+size, len(input))
+		chunks = append(chunks, compute.NewMatrix(input[i:end]))
+	}
+	return chunks
 }
