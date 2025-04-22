@@ -21,7 +21,7 @@ import (
 )
 
 // TODO: limit memory usage
-var queue = make(chan struct{}, max(1, runtime.NumCPU()/2))
+var queue = make(chan struct{}, max(1, runtime.NumCPU()))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
@@ -239,6 +239,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
 	queue <- struct{}{}
 	defer func() {
+		X.Close()
 		<-queue
 		if concurrent.Add(-1) <= 0 {
 			close(Y)
@@ -250,7 +251,6 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	// check if target is met or context is canceled
 	if X.total <= targetSize || ctx.Err() != nil {
 		Y <- X.centroid
-		X.Close()
 		return
 	}
 
@@ -316,7 +316,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 		bar.IncrBy(len(idxList))
 		minibatch = make([][]uint8, 0, config.BATCH_SIZE_CACHE)
 	}
-	X.Close()
+
 	if len(minibatch) > 0 {
 		dataMatrix := compute.NewMatrix(minibatch)
 		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)

@@ -7,8 +7,8 @@ const (
 	BATCH_SIZE_CACHE    = 5_000
 	CENTROID_SIZE       = 10_000
 
-	SAMPLE_SIZE = 50_000
-	SPLIT_SIZE  = 3
+	SAMPLE_SIZE = 25_000
+	SPLIT_SIZE  = 2
 
 	CACHE_DURATION = 5 * time.Second
 	CACHE_CLEANUP  = 15 * time.Second
