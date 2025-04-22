@@ -101,7 +101,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// divide and conquer
-	X := dataWriter.Finalize()
+	X := dataWriter.Finalize(multibar, 0)
 	Y := make(chan []uint8)
 	concurrent := &atomic.Int64{}
 	concurrent.Add(1)
@@ -234,9 +234,10 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 
 // divide X into k subsets until target is achived
 func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *atomic.Int64, instance *atomic.Uint64, targetSize uint64, X *dataset, Y chan<- []uint8) {
+	id := instance.Add(1)
+
 	queue <- struct{}{}
 	defer func() {
-		X.Close()
 		<-queue
 		if concurrent.Add(-1) <= 0 {
 			close(Y)
@@ -245,16 +246,19 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 
 	// check if target is met or context is canceled
 	if X.total <= targetSize || ctx.Err() != nil {
+		X.Close()
 		Y <- X.centroid
 		return
 	}
 
 	// create sample
-	data := sample(X.ReadRow, int(X.total), config.SAMPLE_SIZE)
+	data := sample(multibar, id, X.ReadRow, int(X.total), config.SAMPLE_SIZE)
 	X.Reset()
 
 	// create centroids
 	centroids := kMeans(
+		multibar,
+		id,
 		data,
 		min(
 			config.SPLIT_SIZE,
@@ -284,7 +288,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	bar := multibar.AddBar(
 		int64(X.total),
 		mpb.PrependDecorators(
-			decor.Name(fmt.Sprintf("%d split embeddings: ", instance.Add(1))),
+			decor.Name(fmt.Sprintf("%d split embeddings: ", id)),
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.BarRemoveOnComplete(),
@@ -309,6 +313,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 		bar.IncrBy(len(idxList))
 		minibatch = make([][]uint8, 0, config.BATCH_SIZE_CACHE)
 	}
+	X.Close()
 	if len(minibatch) > 0 {
 		dataMatrix := compute.NewMatrix(minibatch)
 		_, idxList := cosineSim(centroidsMatrix.Clone(), dataMatrix)
@@ -321,7 +326,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 
 	// divide and conquer
 	for _, dataWriter := range dataWriterList {
-		subsetX := dataWriter.Finalize()
+		subsetX := dataWriter.Finalize(multibar, id)
 		concurrent.Add(1)
 		go divideNconquer(ctx, multibar, concurrent, instance, targetSize, subsetX, Y)
 	}

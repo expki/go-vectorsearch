@@ -3,16 +3,19 @@ package dnc
 import (
 	"bytes"
 	"cmp"
+	"fmt"
 	"math/rand"
 	"time"
 
 	"slices"
 
 	"github.com/expki/go-vectorsearch/compute"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 // assign data to k centroids
-func kMeans(data [][]uint8, k int) [][]uint8 {
+func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 {
 	if len(data) == 0 || k <= 0 {
 		return nil
 	}
@@ -34,11 +37,22 @@ func kMeans(data [][]uint8, k int) [][]uint8 {
 		}
 	}
 
+	// progress bar
+	bar := multibar.AddBar(
+		0,
+		mpb.PrependDecorators(
+			decor.Name(fmt.Sprintf("%d K-Means Superset: ", id)),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.BarRemoveOnComplete(),
+	)
+
 	// Step 3: Iterate superset until convergence
 	vectorLen := len(centroids[0])
 	counts := make([]int, k)
 	var converged bool
 	for !converged {
+		bar.Increment()
 		// Create centroid matrix
 		centroidMatrix := compute.NewMatrix(centroids)
 
@@ -87,6 +101,7 @@ func kMeans(data [][]uint8, k int) [][]uint8 {
 		centroids = newCentroids
 		counts = make([]int, k)
 	}
+	bar.EnableTriggerComplete()
 
 	// Step 4: Order superset by size desc
 	type result struct {
@@ -110,10 +125,21 @@ func kMeans(data [][]uint8, k int) [][]uint8 {
 		centroids[idx] = results[idx].vector
 	}
 
+	// progress bar
+	bar = multibar.AddBar(
+		0,
+		mpb.PrependDecorators(
+			decor.Name(fmt.Sprintf("%d K-Means Set: ", id)),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.BarRemoveOnComplete(),
+	)
+
 	// Step 6: Iterate set until convergence
 	counts = make([]int, k)
 	converged = false
 	for !converged {
+		bar.Increment()
 		// Create centroid matrix
 		centroidMatrix := compute.NewMatrix(centroids)
 
@@ -162,6 +188,7 @@ func kMeans(data [][]uint8, k int) [][]uint8 {
 		centroids = newCentroids
 		counts = make([]int, k)
 	}
+	bar.EnableTriggerComplete()
 
 	// Step 7: Return converged set
 	return centroids

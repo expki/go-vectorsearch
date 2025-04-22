@@ -14,6 +14,7 @@ import (
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/klauspost/compress/zstd"
+	"github.com/vbauerster/mpb/v8"
 )
 
 func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*createDataset, error) {
@@ -74,7 +75,7 @@ func (c *createDataset) WriteRow(vector []uint8) {
 	c.total++
 }
 
-func (c *createDataset) Finalize() *dataset {
+func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) *dataset {
 	// finish writing to file
 	c.encoderBuffer.Flush()
 	c.encoder.Close()
@@ -96,7 +97,12 @@ func (c *createDataset) Finalize() *dataset {
 	X.Reset()
 
 	// set centroid vector
-	X.centroid = kMeans(sample(X.ReadRow, int(c.total), config.SAMPLE_SIZE), 1)[0]
+	X.centroid = kMeans(
+		multibar,
+		id,
+		sample(multibar, id, X.ReadRow, int(c.total), config.SAMPLE_SIZE),
+		1,
+	)[0]
 
 	// move reader to start
 	X.Reset()
