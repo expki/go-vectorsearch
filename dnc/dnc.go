@@ -21,7 +21,7 @@ import (
 )
 
 // TODO: limit memory usage
-var queue = make(chan struct{}, max(1, runtime.NumCPU()/2))
+var queue = make(chan struct{}, max(1, runtime.NumCPU()/4))
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
@@ -72,7 +72,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 90),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 300),
 		),
 	)
 	start := time.Now()
@@ -163,7 +163,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 90),
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 300),
 		),
 	)
 	start = time.Now()
@@ -288,7 +288,7 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 			decor.CountersNoUnit("%d / %d"),
 		),
 		mpb.AppendDecorators(
-			decor.EwmaETA(decor.ET_STYLE_GO, 90),
+			decor.EwmaETA(decor.ET_STYLE_GO, 300),
 		),
 	)
 

@@ -182,4 +182,5 @@ func (d *dataset) Close() {
 		os.Remove(d.folderpath)
 		d.folderpath = ""
 	}
+	runtime.GC()
 }
