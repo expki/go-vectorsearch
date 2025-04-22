@@ -22,6 +22,8 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 1: Initialize utilities
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var centroidMatrix compute.Matrix
+	var centroidIndexes []int
 	dataMatrix := compute.NewMatrix(data)
 	cosineSim, closeGraph := compute.MatrixCosineSimilarity()
 	defer closeGraph()
@@ -61,10 +63,10 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	for !converged {
 		bar.Increment()
 		// Create centroid matrix
-		centroidMatrix := compute.NewMatrix(centroids)
+		centroidMatrix = compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		_, centroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+		_, centroidIndexes = cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -98,7 +100,12 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		centroids = newCentroids
-		counts = make([]int, k*2)
+		for idx := range counts {
+			counts[idx] = 0
+		}
+		for idx := range sumVectors {
+			sumVectors[idx] = make([]float32, vectorLen)
+		}
 	}
 	bar.EnableTriggerComplete()
 
@@ -142,10 +149,10 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	for !converged {
 		bar.Increment()
 		// Create centroid matrix
-		centroidMatrix := compute.NewMatrix(centroids)
+		centroidMatrix = compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		_, centroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
+		_, centroidIndexes = cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
@@ -179,7 +186,12 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		centroids = newCentroids
-		counts = make([]int, k*2)
+		for idx := range counts {
+			counts[idx] = 0
+		}
+		for idx := range sumVectors {
+			sumVectors[idx] = make([]float32, vectorLen)
+		}
 	}
 	bar.EnableTriggerComplete()
 
