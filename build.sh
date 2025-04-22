@@ -17,10 +17,19 @@ if [ ! -f static/api/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/api/swagger-ui-bundle.js
 fi
 mkdir -p build
-printf "Building Legacy...\n"
-GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch-legacy .
+printf "Building...\n"
+GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch .
 printf "Building AVX2...\n"
-GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch .
+GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch-avx2 .
 printf "Building AVX512...\n"
 GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch-avx512 .
+#TODO: make BINARY=64 CC=gcc FC=gfortran USE_THREAD=1 NO_AVX=1 NO_AVX2=1 NO_AVX512=1
+#printf "Building OpenBLAS...\n"
+#GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags "avx lapack netlib" -ldflags="-extldflags=-static" -o build/vectorsearch-openblas .
+#TODO: make BINARY=64 CC=gcc FC=gfortran USE_THREAD=1 NO_AVX512=1
+#printf "Building OpenBLAS-AVX2...\n"
+#GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags "avx lapack netlib" -ldflags="-extldflags=-static" -o build/vectorsearch-openblas-avx2 .
+#TODO: make BINARY=64 CC=gcc FC=gfortran USE_THREAD=1
+#printf "Building OpenBLAS-AVX2...\n"
+#GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags "avx lapack netlib" -ldflags="-extldflags=-static" -o build/vectorsearch-openblas-avx512 .
 printf "Build completed.\n"
