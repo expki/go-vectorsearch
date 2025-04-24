@@ -25,7 +25,7 @@ func newDataset(concurrent *atomic.Int64, vectorSize int, folderPath string) (*c
 	}
 
 	// buffer writes
-	encoderBuffer := bufio.NewWriterSize(file, vectorSize*config.BATCH_SIZE_CACHE)
+	encoderBuffer := bufio.NewWriterSize(file, (8+vectorSize)*config.BATCH_SIZE_CACHE)
 
 	// dataset creator
 	return &createDataset{
@@ -50,8 +50,8 @@ type createDataset struct {
 	total uint64
 }
 
-func (c *createDataset) WriteRow(vector []uint8) {
-	c.fileBuffer.Write(vector)
+func (c *createDataset) WriteRow(row []uint8) {
+	c.fileBuffer.Write(row)
 	c.total++
 }
 
@@ -112,19 +112,19 @@ type dataset struct {
 	total    uint64
 }
 
-func (d *dataset) ReadRow() []uint8 {
+func (d *dataset) ReadRow() (row []uint8) {
 	if d.fileBuffer == nil {
 		logger.Sugar().Fatalf("File is not open for decoder")
 	}
-	vector := make([]uint8, d.vectorsize)
-	_, err := io.ReadFull(d.fileBuffer, vector)
+	row = make([]uint8, 8+d.vectorsize)
+	_, err := io.ReadFull(d.fileBuffer, row)
 	if err == io.EOF {
 		return nil
 	}
 	if err != nil {
-		logger.Sugar().Fatalf("Failed to read vector from decoder: %v", err)
+		logger.Sugar().Fatalf("Failed to read row from decoder: %v", err)
 	}
-	return vector
+	return row
 }
 
 func (d *dataset) Reset() (err error) {
@@ -134,7 +134,7 @@ func (d *dataset) Reset() (err error) {
 	// move to start of cache file
 	d.file.Seek(0, io.SeekStart)
 	// create buffer
-	d.fileBuffer = bufio.NewReaderSize(d.file, d.vectorsize*config.BATCH_SIZE_CACHE)
+	d.fileBuffer = bufio.NewReaderSize(d.file, (8+d.vectorsize)*config.BATCH_SIZE_CACHE)
 	return nil
 }
 

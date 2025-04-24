@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -241,9 +240,9 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	logger.Sugar().Debug("calculating nearest centroid")
 	matrixCentroids := make([][]uint8, len(centroids))
 	for idx, centroid := range centroids {
-		matrixCentroids[idx] = slices.Clone(centroid.Vector)
+		matrixCentroids[idx] = centroid.Vector
 	}
-	_, centroidIdxList := compute.NewMatrix(matrixCentroids).MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings.Value()).Clone())
+	_, centroidIdxList := compute.NewMatrix(matrixCentroids).Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings.Value()).Clone())
 
 	// Create documents
 	logger.Sugar().Debug("creating documents")

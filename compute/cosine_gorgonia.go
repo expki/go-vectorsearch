@@ -150,7 +150,7 @@ func VectorMatrixCosineSimilarity() (calculate func(vector Vector, matrix Matrix
 func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 	realMatrix2 := matrix2.(*matrixContainer)
 	if matrix1.shape[1] != realMatrix2.shape[1] {
-		logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", matrix1.shape[1], realMatrix2.shape[1])
+		logger.Sugar().Fatalf("matrix/matrix column size does not match: %d != %d", matrix1.shape[1], realMatrix2.shape[1])
 	}
 	g := gorgonia.NewGraph()
 
@@ -282,7 +282,7 @@ func MatrixCosineSimilarity() (calculate func(matrix1 Matrix, matrix2 Matrix) (r
 			realMatrix1 := matrix1.(*matrixContainer)
 			realMatrix2 := matrix2.(*matrixContainer)
 			if realMatrix1.shape[1] != realMatrix2.shape[1] {
-				logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", realMatrix1.shape[1], realMatrix2.shape[1])
+				logger.Sugar().Fatalf("matrix/matrix column size does not match: %d != %d", realMatrix1.shape[1], realMatrix2.shape[1])
 			}
 			// Check if shapes are compatible with current machine
 			if !slices.Equal(matrixShape1, realMatrix1.shape) || !slices.Equal(matrixShape2, realMatrix2.shape) {

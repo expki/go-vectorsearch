@@ -55,7 +55,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// create dataset writer
-	dataWriter, err := newDataset(&atomic.Int64{}, len(embedding.Vector), folderPath)
+	dataWriter, err := newDataset(&atomic.Int64{}, len(compute.DequantizeVector[float32](embedding.Vector)), folderPath)
 	if err != nil {
 		return errors.Join(errors.New("failed to create file writer"), err)
 	}

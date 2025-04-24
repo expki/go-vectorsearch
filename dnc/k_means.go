@@ -55,7 +55,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	)
 
 	// Step 3: Iterate superset until convergence
-	vectorLen := len(centroids[0])
+	vectorLen := len(centroids[0]) - 8
 	counts := make([]int, kS)
 	sumVectors := make([][]float32, kS)
 	meanVectors := make([][]float32, kS)
@@ -70,7 +70,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		centroidMatrix := compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		centroidIndexes := make([]int, 0, len(data))
+		centroidIndexes := make([]int, 0, len(centroids))
 		for _, dataMatrix := range chunkedDataMatrix {
 			_, chunkedCentroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
 			centroidIndexes = append(centroidIndexes, chunkedCentroidIndexes...)
@@ -160,7 +160,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		centroidMatrix := compute.NewMatrix(centroids)
 
 		// Find nearest centroid for each data point
-		centroidIndexes := make([]int, 0, len(data))
+		centroidIndexes := make([]int, 0, len(centroids))
 		for _, dataMatrix := range chunkedDataMatrix {
 			_, chunkedCentroidIndexes := cosineSim(centroidMatrix.Clone(), dataMatrix.Clone())
 			centroidIndexes = append(centroidIndexes, chunkedCentroidIndexes...)

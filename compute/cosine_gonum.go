@@ -59,47 +59,49 @@ func VectorMatrixCosineSimilarity() (calculate func(vector Vector, matrix Matrix
 // The first matrix is the input matrix and the second matrix is the batch of vectors to compare against.
 func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 	realMatrix2 := (matrix2.(*matrixContainer))
-	A := matrix1.data
-	B := realMatrix2.data
+	A := matrix1.data     // Centroids
+	B := realMatrix2.data // Data
 	AShape := matrix1.shape
 	BShape := realMatrix2.shape
+
 	if AShape.cols != BShape.cols {
 		logger.Sugar().Fatalf("matrix/matrix column size does not match: %d != %d", AShape.cols, BShape.cols)
 	}
+
 	dim := AShape.cols
-	m := AShape.rows
-	n := BShape.rows
+	m := AShape.rows // Centroids
+	n := BShape.rows // Data points
 
 	impl := blas64.Implementation()
 
-	// Normalize rows of A and B in-place
+	// Normalize all rows
 	normalizeMatrixRows(A, m, dim)
 	normalizeMatrixRows(B, n, dim)
 
-	// Allocate output buffer C (m x n)
-	C := make([]float64, m*n)
+	// Allocate output buffer C (n x m), since we want B x Aᵗ
+	C := make([]float64, n*m)
 
-	// Compute C = A * Bᵗ using raw Dgemm
+	// Compute C = B × Aᵗ
 	impl.Dgemm(
 		blas.NoTrans, blas.Trans,
-		m,   // rows of A
-		n,   // cols of Bᵗ (rows of B)
+		n,   // rows of B
+		m,   // cols of Aᵗ (rows of A)
 		dim, // shared dimension
-		1.0, A, dim,
-		B, dim,
-		0.0, C, n,
+		1.0, B, dim,
+		A, dim,
+		0.0, C, m, // note: row-major, so ldc is m (the inner dimension)
 	)
 
-	// Extract results
-	sims := make([]float32, len(C))
-	argmax := make([]int, m)
+	// Extract results: for each row in B, find best match in A
+	sims := make([]float32, len(C)) // n * m
+	argmax := make([]int, n)        // one best match per row of B
 
-	for i := 0; i < m; i++ {
-		rowOffset := i * n
+	for i := 0; i < n; i++ {
+		rowOffset := i * m
 		maxIdx := 0
 		maxVal := C[rowOffset]
 
-		for j := 0; j < n; j++ {
+		for j := 0; j < m; j++ {
 			v := C[rowOffset+j]
 			sims[rowOffset+j] = float32(v)
 			if v > maxVal {

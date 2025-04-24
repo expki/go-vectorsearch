@@ -69,49 +69,47 @@ func VectorMatrixCosineSimilarity() (calculate func(vector Vector, matrix Matrix
 // The first matrix is the input matrix and the second matrix is the batch of vectors to compare against.
 func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 	realMatrix2 := (matrix2.(*matrixContainer))
-	A := matrix1.data
-	B := realMatrix2.data
+	A := matrix1.data     // Centroids
+	B := realMatrix2.data // Data points
 	AShape := matrix1.shape
 	BShape := realMatrix2.shape
+
 	if AShape.cols != BShape.cols {
-		logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", AShape.cols, BShape.cols)
+		logger.Sugar().Fatalf("matrix/matrix column size does not match: %d != %d", AShape.cols, BShape.cols)
 	}
+
 	dim := AShape.cols
-	m := AShape.rows
-	n := BShape.rows
+	m := AShape.rows // Centroids
+	n := BShape.rows // Data
 
-	// Normalize all rows in A
+	// Normalize all rows in A (centroids)
 	for i := 0; i < m; i++ {
-		row := A[i*dim : (i+1)*dim]
-		normalizeVector(row)
+		normalizeVector(A[i*dim : (i+1)*dim])
 	}
 
-	// Normalize all rows in B
+	// Normalize all rows in B (data)
 	for i := 0; i < n; i++ {
-		row := B[i*dim : (i+1)*dim]
-		normalizeVector(row)
+		normalizeVector(B[i*dim : (i+1)*dim])
 	}
 
-	// Result slice: m x n similarity matrix (row-major)
-	sims := make([]float32, m*n)
-	argmax := make([]int, m)
+	// Result: For each row in B, find best match in A
+	sims := make([]float32, n)
+	argmax := make([]int, n)
 
-	for i := 0; i < m; i++ {
-		Arow := A[i*dim : (i+1)*dim]
+	for i := 0; i < n; i++ {
+		Brow := B[i*dim : (i+1)*dim]
+
 		maxVal := -1.0
 		maxIdx := 0
 
-		for j := 0; j < n; j++ {
-			Brow := B[j*dim : (j+1)*dim]
+		for j := 0; j < m; j++ {
+			Arow := A[j*dim : (j+1)*dim]
 
-			// Compute dot product
+			// Dot product (cosine similarity)
 			var dot float64
 			for k := 0; k < dim; k++ {
 				dot += Arow[k] * Brow[k]
 			}
-
-			idx := i*n + j
-			sims[idx] = float32(dot)
 
 			if dot > maxVal {
 				maxVal = dot
@@ -119,6 +117,7 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 			}
 		}
 
+		sims[i] = float32(maxVal)
 		argmax[i] = maxIdx
 	}
 

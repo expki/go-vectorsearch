@@ -27,12 +27,12 @@ func Dequantize[T float32 | float64](valueQuantized uint8, min T, max T) (value 
 }
 
 func QuantizeVector[T float32 | float64](vector []T) (vectorQuantized []uint8) {
-	vectorQuantized = make([]uint8, len(vector)+8)
+	vectorQuantized = make([]uint8, 8+len(vector))
 	min, max := rangeFloat(vector)
 	binary.LittleEndian.PutUint32(vectorQuantized, math.Float32bits(float32(min)))
 	binary.LittleEndian.PutUint32(vectorQuantized[4:], math.Float32bits(float32(max)))
 	for i, value := range vector {
-		vectorQuantized[i+8] = Quantize(value, T(min), T(max))
+		vectorQuantized[8+i] = Quantize(value, T(min), T(max))
 	}
 	return vectorQuantized
 }
