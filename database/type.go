@@ -50,13 +50,3 @@ func subSlice[T any](list []T, max int) []T {
 	}
 	return list
 }
-
-type VectorField []uint8
-
-func (e VectorField) Underlying() []uint8 {
-	out := make([]uint8, len(e))
-	for i, value := range e {
-		out[i] = uint8(value)
-	}
-	return out
-}

@@ -7,8 +7,8 @@ import (
 )
 
 type Embedding struct {
-	ID     uint64      `gorm:"primarykey"`
-	Vector VectorField `gorm:"not null"`
+	ID     uint64 `gorm:"primarykey"`
+	Vector []byte `gorm:"not null"`
 
 	// Parent
 	DocumentID uint64    `gorm:"index:idx_embedding_document;not null"`
@@ -33,9 +33,9 @@ type Document struct {
 }
 
 type Centroid struct {
-	ID          uint64      `gorm:"primarykey"`
-	Vector      VectorField `gorm:"not null"`
-	LastUpdated time.Time   `gorm:"index:idx_centroid_updated;not null"`
+	ID          uint64    `gorm:"primarykey"`
+	Vector      []byte    `gorm:"not null"`
+	LastUpdated time.Time `gorm:"index:idx_centroid_updated;not null"`
 
 	// Parent
 	CategoryID uint64    `gorm:"index:idx_centroid_category;not null"`

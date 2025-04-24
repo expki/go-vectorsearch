@@ -69,7 +69,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	// read all data
 	type result struct {
 		ID     uint64
-		Vector database.VectorField
+		Vector []byte
 	}
 	bar := multibar.AddBar(
 		total,
@@ -166,7 +166,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	type update struct {
 		ID         uint64
 		CentroidID uint64
-		Vector     database.VectorField
+		Vector     []byte
 	}
 	bar = multibar.AddBar(
 		total,
