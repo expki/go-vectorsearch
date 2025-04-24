@@ -39,7 +39,7 @@ function Search({ owner, category }: Props) {
       const documents = res?.documents ?? [];
       const results: Array<result> = documents.map((document, idx) => ({
         id: document.document_id,
-        title: `Result ${idx+1} has ${(100 * document.document_similarity).toFixed(2)}% similarity`,
+        title: `Result ${idx+1} has ${(50 * (document.document_similarity + 1)).toFixed(2)}% match`,
         description: String(document.document),
       }));
       setSearchResults(results);

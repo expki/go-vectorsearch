@@ -42,7 +42,7 @@ func DequantizeVector[T float32 | float64](vectorQuantized []uint8) (vector []T)
 	max := T(math.Float32frombits(binary.LittleEndian.Uint32(vectorQuantized[4:])))
 	vector = make([]T, len(vectorQuantized)-8)
 	for i, value := range vectorQuantized[8:] {
-		vector[i] = Dequantize[T](value, min, max)
+		vector[i] = Dequantize(value, min, max)
 	}
 	return vector
 }
@@ -61,17 +61,6 @@ func DequantizeMatrix[T float32 | float64](matrixQuantized [][]uint8) (matrix []
 		matrix[i] = DequantizeVector[T](vector)
 	}
 	return matrix
-}
-
-func bytesToFloat32(bytes []byte) float32 {
-	bits := binary.LittleEndian.Uint32(bytes)
-	return math.Float32frombits(bits)
-}
-
-func floatToBytes(f float32) []byte {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, math.Float32bits(f))
-	return buf
 }
 
 func rangeFloat[T float32 | float64](slice []T) (min T, max T) {
