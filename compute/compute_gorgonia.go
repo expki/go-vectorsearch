@@ -1,22 +1,22 @@
-//go:build !gonum && !gorgonia
-// +build !gonum,!gorgonia
+//go:build gorgonia
+// +build gorgonia
 
 package compute
 
 import (
-	"slices"
+	_ "github.com/expki/go-vectorsearch/env"
+	"gorgonia.org/tensor"
 )
 
 func NewVector(vectorQuantized []uint8) Vector {
 	cols := len(vectorQuantized)
-	if cols <= 0 {
+	if cols <= 8 {
 		panic("vector columns are empty")
 	}
+	vector := DequantizeVector[float32](vectorQuantized)
 	return &vectorContainer{
-		data: DequantizeVector[float64](vectorQuantized),
-		shape: vectorShape{
-			cols: cols - 8,
-		},
+		dense: tensor.New(tensor.WithBacking(vector), tensor.WithShape(1, cols-8)),
+		shape: tensor.Shape{cols - 8},
 	}
 }
 
@@ -29,49 +29,37 @@ func NewMatrix(matrixQuantized [][]uint8) Matrix {
 	if cols <= 8 {
 		panic("matrix columns are empty")
 	}
-	matrix := DequantizeMatrix[float64](matrixQuantized)
-	flat := make([]float64, rows*(cols-8))
+	matrix := DequantizeMatrix[float32](matrixQuantized)
+	flat := make([]float32, rows*(cols-8))
 	for i, row := range matrix {
 		copy(flat[i*cols:], row)
 	}
 	return &matrixContainer{
-		data: flat,
-		shape: matrixShape{
-			rows: rows,
-			cols: cols - 8,
-		},
+		dense: tensor.New(tensor.WithBacking(flat), tensor.WithShape(rows, cols-8)),
+		shape: tensor.Shape{rows, cols - 8},
 	}
 }
 
 type vectorContainer struct {
-	data  []float64
-	shape vectorShape
+	dense *tensor.Dense
+	shape tensor.Shape
 }
 
 type matrixContainer struct {
-	data  []float64
-	shape matrixShape
-}
-
-type vectorShape struct {
-	cols int
-}
-
-type matrixShape struct {
-	rows int
-	cols int
+	dense *tensor.Dense
+	shape tensor.Shape
 }
 
 func (v *vectorContainer) Clone() (clone Vector) {
 	return &vectorContainer{
-		data:  slices.Clone(v.data),
+		dense: v.dense.Clone().(*tensor.Dense),
 		shape: v.shape,
 	}
 }
 
 func (m *matrixContainer) Clone() (clone Matrix) {
 	return &matrixContainer{
-		data:  slices.Clone(m.data),
+		dense: m.dense.Clone().(*tensor.Dense),
 		shape: m.shape,
 	}
 }

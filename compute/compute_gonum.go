@@ -1,5 +1,5 @@
-//go:build !gonum && !gorgonia
-// +build !gonum,!gorgonia
+//go:build gonum
+// +build gonum
 
 package compute
 

@@ -50,9 +50,9 @@ func (n *noai) Embed(_ context.Context, request ai.EmbedRequest) (response ai.Em
 	for idx := range len(request.Input) {
 		raw := make([]byte, embeddingVectorSize)
 		n.random.Read(raw)
-		row := make([]ai.EmbeddingValue, embeddingVectorSize)
+		row := make(ai.Embedding, embeddingVectorSize)
 		for n, val := range raw {
-			row[n] = ai.EmbeddingValue(val)
+			row[n] = val
 		}
 		response.Embeddings[idx] = row
 	}

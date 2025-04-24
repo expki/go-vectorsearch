@@ -95,27 +95,32 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	return response, nil
 }
 
-type Embeddings [][]EmbeddingValue
+type Embeddings []Embedding
 
-func (e Embeddings) Underlying() [][]uint8 {
-	out := make([][]uint8, len(e))
-	for i, embedding := range e {
-		out[i] = make([]uint8, len(embedding))
-		for j, v := range embedding {
-			out[i][j] = uint8(v)
-		}
+func (e Embeddings) Value() [][]uint8 {
+	value := make([][]uint8, len(e))
+	for i, v := range e {
+		value[i] = v
 	}
-	return out
+	return value
 }
 
-type EmbeddingValue uint8
+type Embedding []uint8
 
-func (e *EmbeddingValue) UnmarshalJSON(data []byte) error {
-	var value float32
-	err := json.Unmarshal(data, &value)
+func (e *Embedding) UnmarshalJSON(data []byte) error {
+	var vector []float32
+	err := json.Unmarshal(data, &vector)
 	if err != nil {
 		return err
 	}
-	*e = EmbeddingValue(compute.Quantize(value, -1, 1))
+	*e = compute.QuantizeVector(vector)
 	return nil
+}
+
+func (e Embedding) Dims() int {
+	return len(e) - 8
+}
+
+func (e Embedding) Value() []uint8 {
+	return e
 }

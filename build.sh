@@ -17,12 +17,25 @@ if [ ! -f static/api/swagger-ui-bundle.js ]; then
     wget https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -O static/api/swagger-ui-bundle.js
 fi
 mkdir -p build
-printf "Building...\n"
+printf "Go: Building...\n"
 GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch .
-printf "Building AVX2...\n"
-GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch-avx2 .
-printf "Building AVX512...\n"
-GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/vectorsearch-avx512 .
+printf "Go: Building AVX2...\n"
+GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch-avx2 .
+printf "Go: Building AVX512...\n"
+GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o build/vectorsearch-avx512 .
+printf "Gonum: Building...\n"
+GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gonum" -o build/vectorsearch-gonum .
+printf "Gonum: Building AVX2...\n"
+GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gonum" -o build/vectorsearch-gonum-avx2 .
+printf "Gonum: Building AVX512...\n"
+GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gonum" -o build/vectorsearch-gonum-avx512 .
+printf "Gorgonia: Building...\n"
+GOAMD64=v2 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gorgonia" -o build/vectorsearch-gorgonia .
+printf "Gorgonia: Building AVX2...\n"
+GOAMD64=v3 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gorgonia avx" -o build/vectorsearch-gorgonia-avx2 .
+printf "Gorgonia: Building AVX512...\n"
+GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags="gorgonia avx" -o build/vectorsearch-gorgonia-avx512 .
+
 #TODO: make BINARY=64 CC=gcc FC=gfortran USE_THREAD=1 NO_AVX=1 NO_AVX2=1 NO_AVX512=1
 #printf "Building OpenBLAS...\n"
 #GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags "avx lapack netlib" -ldflags="-extldflags=-static" -o build/vectorsearch-openblas .
@@ -32,4 +45,5 @@ GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags='avx' -o build/v
 #TODO: make BINARY=64 CC=gcc FC=gfortran USE_THREAD=1
 #printf "Building OpenBLAS-AVX2...\n"
 #GOAMD64=v4 GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -tags "avx lapack netlib" -ldflags="-extldflags=-static" -o build/vectorsearch-openblas-avx512 .
+
 printf "Build completed.\n"

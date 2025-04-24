@@ -144,7 +144,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	if len(embedRes.Embeddings) < 1 {
 		return res, errors.New("embedding returned empty response")
 	}
-	target := compute.NewTensor(embedRes.Embeddings.Underlying()[0])
+	target := compute.NewVector(embedRes.Embeddings[0])
 
 	// Get Owner
 	logger.Sugar().Debugf("retrieving owner: %s", req.Owner)

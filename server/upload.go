@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -146,7 +147,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		// exception encountered
 		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
-	matrixEmbeddings := embedRes.Embeddings.Underlying()
+	matrixEmbeddings := embedRes.Embeddings
 	if len(matrixEmbeddings) != len(embeddingInputList) {
 		return res, errors.New("invalid response embeddings count")
 	}
@@ -215,7 +216,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		if err == nil && len(centroids) == 0 {
 			// centroid create
 			centroids = append(centroids, database.Centroid{
-				Vector:     matrixEmbeddings[0],
+				Vector:     matrixEmbeddings[0].Value(),
 				CategoryID: category.ID,
 				Category:   &category,
 			})
@@ -240,9 +241,9 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	logger.Sugar().Debug("calculating nearest centroid")
 	matrixCentroids := make([][]uint8, len(centroids))
 	for idx, centroid := range centroids {
-		matrixCentroids[idx] = centroid.Vector
+		matrixCentroids[idx] = slices.Clone(centroid.Vector)
 	}
-	_, centroidIdxList := compute.NewMatrix(matrixCentroids).Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings).Clone())
+	_, centroidIdxList := compute.NewMatrix(matrixCentroids).MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings.Value()).Clone())
 
 	// Create documents
 	logger.Sugar().Debug("creating documents")
@@ -269,7 +270,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			centroidIdxList = centroidIdxList[1:]
 			centroid := centroids[centroidIdx]
 			embedding := &database.Embedding{
-				Vector:     vector,
+				Vector:     vector.Value(),
 				CentroidID: centroid.ID,
 				Centroid:   &centroid,
 				Document:   document,

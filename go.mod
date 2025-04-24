@@ -8,6 +8,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.39.0
 	golang.org/x/sync v0.13.0
+	gonum.org/v1/gonum v0.16.0
 	gorgonia.org/gorgonia v0.9.18
 	gorgonia.org/tensor v0.9.24
 	gorm.io/driver/postgres v1.5.11
@@ -46,7 +47,6 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gorgonia.org/cu v0.9.6 // indirect
 	gorgonia.org/dawson v1.2.0 // indirect

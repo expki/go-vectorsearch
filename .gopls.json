@@ -1,0 +1,5 @@
+{
+  "buildFlags": [
+    "-tags=none"
+  ]
+}

@@ -1,10 +1,11 @@
-//go:build !gonum && !gorgonia
-// +build !gonum,!gorgonia
+//go:build gonum
+// +build gonum
 
 package compute
 
 import (
-	"math"
+	"gonum.org/v1/gonum/blas"
+	"gonum.org/v1/gonum/blas/blas64"
 )
 
 // MatrixCosineSimilarity facilitates the computation of cosine similarity between a vector and a matrix with single graph.
@@ -20,35 +21,25 @@ func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity
 	dim := AShape.cols
 	n := BShape.rows
 
-	// Normalize A in-place
-	normalizeVector(A)
+	impl := blas64.Implementation()
 
-	// Normalize each row in B in-place
+	// Normalize A and B
+	normalizeVector(A, dim)
+	normalizeMatrixRows(B, n, dim)
+
+	// Output similarity scores
+	scores := make([]float64, n)
+
+	// scores = B * Aᵗ (each row of B ⋅ A)
 	for i := 0; i < n; i++ {
-		start := i * dim
-		end := start + dim
-		normalizeVector(B[start:end])
+		scores[i] = impl.Ddot(dim, B[i*dim:], 1, A, 1)
 	}
 
-	// Allocate result slice
+	// Convert to float32 and find argmax
 	sims := make([]float32, n)
 
-	// Compute dot products (cosine similarity)
-	var maxSim float64 = -1 // cosine similarity range is [-1, 1]
-
 	for i := 0; i < n; i++ {
-		start := i * dim
-
-		// Dot product between A and B[i]
-		var dot float64
-		for j := 0; j < dim; j++ {
-			dot += A[j] * B[start+j]
-		}
-
-		sims[i] = float32(dot)
-		if dot > maxSim {
-			maxSim = dot
-		}
+		sims[i] = float32(scores[i])
 	}
 
 	return sims
@@ -78,45 +69,43 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 	m := AShape.rows
 	n := BShape.rows
 
-	// Normalize all rows in A
-	for i := 0; i < m; i++ {
-		row := A[i*dim : (i+1)*dim]
-		normalizeVector(row)
-	}
+	impl := blas64.Implementation()
 
-	// Normalize all rows in B
-	for i := 0; i < n; i++ {
-		row := B[i*dim : (i+1)*dim]
-		normalizeVector(row)
-	}
+	// Normalize rows of A and B in-place
+	normalizeMatrixRows(A, m, dim)
+	normalizeMatrixRows(B, n, dim)
 
-	// Result slice: m x n similarity matrix (row-major)
-	sims := make([]float32, m*n)
+	// Allocate output buffer C (m x n)
+	C := make([]float64, m*n)
+
+	// Compute C = A * Bᵗ using raw Dgemm
+	impl.Dgemm(
+		blas.NoTrans, blas.Trans,
+		m,   // rows of A
+		n,   // cols of Bᵗ (rows of B)
+		dim, // shared dimension
+		1.0, A, dim,
+		B, dim,
+		0.0, C, n,
+	)
+
+	// Extract results
+	sims := make([]float32, len(C))
 	argmax := make([]int, m)
 
 	for i := 0; i < m; i++ {
-		Arow := A[i*dim : (i+1)*dim]
-		maxVal := -1.0
+		rowOffset := i * n
 		maxIdx := 0
+		maxVal := C[rowOffset]
 
 		for j := 0; j < n; j++ {
-			Brow := B[j*dim : (j+1)*dim]
-
-			// Compute dot product
-			var dot float64
-			for k := 0; k < dim; k++ {
-				dot += Arow[k] * Brow[k]
-			}
-
-			idx := i*n + j
-			sims[idx] = float32(dot)
-
-			if dot > maxVal {
-				maxVal = dot
+			v := C[rowOffset+j]
+			sims[rowOffset+j] = float32(v)
+			if v > maxVal {
+				maxVal = v
 				maxIdx = j
 			}
 		}
-
 		argmax[i] = maxIdx
 	}
 
@@ -134,15 +123,24 @@ func MatrixCosineSimilarity() (calculate func(matrix1 Matrix, matrix2 Matrix) (r
 }
 
 // normalizeMatrixRows normalizes each row vector by dividing each element by its L2 norm.
-func normalizeVector(vec []float64) {
-	var norm float64
-	for _, v := range vec {
-		norm += v * v
-	}
-	norm = math.Sqrt(norm)
-	if norm != 0 {
-		for i := range vec {
-			vec[i] /= norm
+func normalizeMatrixRows(data []float64, rows, cols int) {
+	impl := blas64.Implementation()
+	for i := 0; i < rows; i++ {
+		offset := i * cols
+		row := data[offset : offset+cols]
+
+		norm := impl.Dnrm2(cols, row, 1)
+		if norm != 0 {
+			impl.Dscal(cols, 1/norm, row, 1)
 		}
+	}
+}
+
+// normalizeVector normalizes a single vector by dividing each element by its L2 norm.
+func normalizeVector(vec []float64, cols int) {
+	impl := blas64.Implementation()
+	norm := impl.Dnrm2(cols, vec, 1)
+	if norm != 0 {
+		impl.Dscal(cols, 1/norm, vec, 1)
 	}
 }
