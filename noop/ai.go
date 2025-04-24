@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"math"
 	"math/rand"
 	"time"
 
@@ -48,12 +49,14 @@ func (n *noai) Embed(_ context.Context, request ai.EmbedRequest) (response ai.Em
 	}
 	response.Embeddings = make(ai.Embeddings, len(request.Input))
 	for idx := range len(request.Input) {
+		row := make([]byte, 8+embeddingVectorSize)
+		binary.LittleEndian.PutUint32(row, math.Float32bits(-1))
+		binary.LittleEndian.PutUint32(row[4:], math.Float32bits(1))
+
 		raw := make([]byte, embeddingVectorSize)
 		n.random.Read(raw)
-		row := make(ai.Embedding, embeddingVectorSize)
-		for n, val := range raw {
-			row[n] = val
-		}
+
+		copy(row[8:], raw)
 		response.Embeddings[idx] = row
 	}
 	return

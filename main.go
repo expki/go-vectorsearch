@@ -256,11 +256,17 @@ func prefTest() {
 	matrix2 := compute.NewMatrix(embeddings[len(embeddings)/2:])
 	sim, done := compute.MatrixCosineSimilarity()
 	defer done()
-	sim(matrix1, matrix2)
+	sim(matrix1.Clone(), matrix2.Clone())
 	start := time.Now()
 	for range 10 {
 		sim(matrix1.Clone(), matrix2.Clone())
 	}
 	end := time.Since(start)
-	logger.Sugar().Infof("Performance test duration: %s", end.String())
+	logger.Sugar().Infof("Performance Cosine: %s", end.String())
+	start = time.Now()
+	for range 10 {
+		matrix1 = compute.NewMatrix(embeddings)
+	}
+	end = time.Since(start)
+	logger.Sugar().Infof("Performance Quantization: %s", end.String())
 }
