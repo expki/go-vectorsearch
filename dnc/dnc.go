@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -15,6 +16,7 @@ import (
 	"github.com/expki/go-vectorsearch/logger"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
+	"go.uber.org/zap/zapcore"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/plugin/dbresolver"
@@ -58,7 +60,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to create file writer"), err)
 	}
 
-	multibar := mpb.NewWithContext(ctx)
+	multibarOpts := []mpb.ContainerOption{}
+	if logger.Sugar().Level() == zapcore.DebugLevel {
+		multibarOpts = append(multibarOpts, mpb.WithOutput(io.Discard))
+	}
+	multibar := mpb.NewWithContext(ctx, multibarOpts...)
 
 	// read all data
 	type result struct {
@@ -101,6 +107,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// divide and conquer
+	logger.Sugar().Debug("Starting Divide and Conquer")
 	X := dataWriter.Finalize(multibar, 0)
 	Y := make(chan []uint8)
 	instance := &atomic.Uint64{}
@@ -109,12 +116,14 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	go divideNconquer(ctx, multibar, concurrent, instance, config.CENTROID_SIZE, X, Y)
 
 	// retrieve new centroids
+	logger.Sugar().Debug("Waiting for results")
 	centroids := make([][]uint8, 0)
 	for centroid := range Y {
 		centroids = append(centroids, centroid)
 	}
 
 	// retrieve current centroids
+	logger.Sugar().Debug("Retrieving database centroids")
 	var dbCentroids []database.Centroid
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
 		Take(&dbCentroids, "category_id = ?", categoryID).
@@ -127,6 +136,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// update database centroids
+	logger.Sugar().Debug("Updating database centroid vectors")
 	for idx, centroid := range centroids {
 		if len(dbCentroids) < idx+1 {
 			dbCentroids = append(dbCentroids, database.Centroid{
@@ -152,6 +162,7 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	centroidMatrix := compute.NewMatrix(centroids)
 
 	// re-assing to new centroids
+	logger.Sugar().Debug("Re-assigning embeddings to updated centroids")
 	type update struct {
 		ID         uint64
 		CentroidID uint64

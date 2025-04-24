@@ -17,8 +17,12 @@ import (
 
 // assign data to k centroids
 func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 {
-	if len(data) == 0 || k <= 0 {
+	if k <= 0 {
 		return nil
+	}
+	dlen := len(data)
+	if dlen == 0 || dlen <= k {
+		return data
 	}
 
 	// Step 1: Initialize utilities
@@ -28,10 +32,11 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	defer closeGraph()
 
 	// Step 2: Randomly initialize unique centroids superset
-	centroids := make([][]uint8, 0, min(len(data), k*2))
-	used := make(map[int]struct{}, k*2)
-	for len(centroids) < k*2 {
-		i := random.Intn(len(data))
+	kS := min(len(data), k*2)
+	centroids := make([][]uint8, 0, kS)
+	used := make(map[int]struct{}, kS)
+	for len(centroids) < kS {
+		i := random.Intn(dlen)
 		if _, ok := used[i]; !ok {
 			used[i] = struct{}{}
 			centroids = append(centroids, data[i])
@@ -51,10 +56,10 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 	// Step 3: Iterate superset until convergence
 	vectorLen := len(centroids[0])
-	counts := make([]int, k*2)
-	sumVectors := make([][]float32, k*2)
-	meanVectors := make([][]float32, k*2)
-	for i := range k * 2 {
+	counts := make([]int, kS)
+	sumVectors := make([][]float32, kS)
+	meanVectors := make([][]float32, kS)
+	for i := range kS {
 		sumVectors[i] = make([]float32, vectorLen)
 		meanVectors[i] = make([]float32, vectorLen)
 	}
