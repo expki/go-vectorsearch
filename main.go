@@ -12,7 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/expki/go-vectorsearch/compute"
 	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/noop"
 	"github.com/expki/go-vectorsearch/static"
 
 	"github.com/expki/go-vectorsearch/ai"
@@ -74,6 +76,7 @@ func main() {
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}
+	prefTest()
 
 	// Database
 	logger.Sugar().Info("Loading database...")
@@ -238,4 +241,26 @@ type zstdRequestReader struct {
 
 func (r *zstdRequestReader) Read(p []byte) (int, error) {
 	return r.Reader.Read(p)
+}
+
+func prefTest() {
+	noai, _ := noop.NewOllama(config.Ollama{})
+	res, _ := noai.Embed(context.TODO(), ai.EmbedRequest{
+		Input: make([]string, 1000),
+	})
+	embeddings := make([][]uint8, 0, 1000)
+	for _, embedding := range res.Embeddings {
+		embeddings = append(embeddings, embedding.Value())
+	}
+	matrix1 := compute.NewMatrix(embeddings[:len(embeddings)/2])
+	matrix2 := compute.NewMatrix(embeddings[len(embeddings)/2:])
+	sim, done := compute.MatrixCosineSimilarity()
+	defer done()
+	sim(matrix1, matrix2)
+	start := time.Now()
+	for range 10 {
+		sim(matrix1.Clone(), matrix2.Clone())
+	}
+	end := time.Since(start)
+	logger.Sugar().Infof("Performance test duration: %s", end.String())
 }

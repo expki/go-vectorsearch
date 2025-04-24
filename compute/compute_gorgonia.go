@@ -9,14 +9,14 @@ import (
 )
 
 func NewVector(vectorQuantized []uint8) Vector {
-	cols := len(vectorQuantized)
-	if cols <= 8 {
+	cols := len(vectorQuantized) - 8
+	if cols <= 0 {
 		panic("vector columns are empty")
 	}
 	vector := DequantizeVector[float32](vectorQuantized)
 	return &vectorContainer{
-		dense: tensor.New(tensor.WithBacking(vector), tensor.WithShape(1, cols-8)),
-		shape: tensor.Shape{cols - 8},
+		dense: tensor.New(tensor.WithBacking(vector), tensor.WithShape(1, cols)),
+		shape: tensor.Shape{cols},
 	}
 }
 
@@ -25,18 +25,18 @@ func NewMatrix(matrixQuantized [][]uint8) Matrix {
 	if rows == 0 {
 		panic("matrix rows are empty")
 	}
-	cols := len(matrixQuantized[0])
-	if cols <= 8 {
+	cols := len(matrixQuantized[0]) - 8
+	if cols <= 0 {
 		panic("matrix columns are empty")
 	}
 	matrix := DequantizeMatrix[float32](matrixQuantized)
-	flat := make([]float32, rows*(cols-8))
+	flat := make([]float32, rows*cols)
 	for i, row := range matrix {
 		copy(flat[i*cols:], row)
 	}
 	return &matrixContainer{
-		dense: tensor.New(tensor.WithBacking(flat), tensor.WithShape(rows, cols-8)),
-		shape: tensor.Shape{rows, cols - 8},
+		dense: tensor.New(tensor.WithBacking(flat), tensor.WithShape(rows, cols)),
+		shape: tensor.Shape{rows, cols},
 	}
 }
 

@@ -8,14 +8,14 @@ import (
 )
 
 func NewVector(vectorQuantized []uint8) Vector {
-	cols := len(vectorQuantized)
+	cols := len(vectorQuantized) - 8
 	if cols <= 0 {
 		panic("vector columns are empty")
 	}
 	return &vectorContainer{
 		data: DequantizeVector[float64](vectorQuantized),
 		shape: vectorShape{
-			cols: cols - 8,
+			cols: cols,
 		},
 	}
 }
@@ -25,12 +25,12 @@ func NewMatrix(matrixQuantized [][]uint8) Matrix {
 	if rows == 0 {
 		panic("matrix rows are empty")
 	}
-	cols := len(matrixQuantized[0])
-	if cols <= 8 {
+	cols := len(matrixQuantized[0]) - 8
+	if cols <= 0 {
 		panic("matrix columns are empty")
 	}
 	matrix := DequantizeMatrix[float64](matrixQuantized)
-	flat := make([]float64, rows*(cols-8))
+	flat := make([]float64, rows*cols)
 	for i, row := range matrix {
 		copy(flat[i*cols:], row)
 	}
@@ -38,7 +38,7 @@ func NewMatrix(matrixQuantized [][]uint8) Matrix {
 		data: flat,
 		shape: matrixShape{
 			rows: rows,
-			cols: cols - 8,
+			cols: cols,
 		},
 	}
 }

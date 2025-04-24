@@ -4,6 +4,7 @@
 package compute
 
 import (
+	"github.com/expki/go-vectorsearch/logger"
 	"gonum.org/v1/gonum/blas"
 	"gonum.org/v1/gonum/blas/blas64"
 )
@@ -16,7 +17,7 @@ func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity
 	AShape := vector.shape
 	BShape := realMatrix.shape
 	if AShape.cols != BShape.cols {
-		panic("matrix columns does not match")
+		logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", AShape.cols, BShape.cols)
 	}
 	dim := AShape.cols
 	n := BShape.rows
@@ -63,7 +64,7 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 	AShape := matrix1.shape
 	BShape := realMatrix2.shape
 	if AShape.cols != BShape.cols {
-		panic("matrix columns does not match")
+		logger.Sugar().Fatalf("matrix/matrix column size does not match: %d != %d", AShape.cols, BShape.cols)
 	}
 	dim := AShape.cols
 	m := AShape.rows

@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	_ "github.com/expki/go-vectorsearch/env"
+	"github.com/expki/go-vectorsearch/logger"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
 )
@@ -14,6 +15,9 @@ import (
 // MatrixCosineSimilarity facilitates the computation of cosine similarity between a vector and a matrix with single graph.
 func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity []float32) {
 	realMatrix := matrix.(*matrixContainer)
+	if vector.shape[0] != realMatrix.shape[1] {
+		logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", vector.shape[0], realMatrix.shape[1])
+	}
 	g := gorgonia.NewGraph()
 
 	// Input vector
@@ -103,6 +107,9 @@ func VectorMatrixCosineSimilarity() (calculate func(vector Vector, matrix Matrix
 	return func(vector Vector, matrix Matrix) (similarity []float32) {
 			realVector := vector.(*vectorContainer)
 			realMatrix := matrix.(*matrixContainer)
+			if realVector.shape[0] != realMatrix.shape[1] {
+				logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", realVector.shape[0], realMatrix.shape[1])
+			}
 			// Check if shapes are compatible with current machine
 			if !slices.Equal(vectorShape, realVector.shape) || !slices.Equal(matrixShape, realMatrix.shape) {
 				if machine != nil {
@@ -142,6 +149,9 @@ func VectorMatrixCosineSimilarity() (calculate func(vector Vector, matrix Matrix
 // The first matrix is the input matrix and the second matrix is the batch of vectors to compare against.
 func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 	realMatrix2 := matrix2.(*matrixContainer)
+	if matrix1.shape[1] != realMatrix2.shape[1] {
+		logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", matrix1.shape[1], realMatrix2.shape[1])
+	}
 	g := gorgonia.NewGraph()
 
 	// Create tensor nodes to hold M1 and M2 (rank=2)
@@ -271,6 +281,9 @@ func MatrixCosineSimilarity() (calculate func(matrix1 Matrix, matrix2 Matrix) (r
 	return func(matrix1 Matrix, matrix2 Matrix) (relativeSimilaritieList []float32, nearestIndexList []int) {
 			realMatrix1 := matrix1.(*matrixContainer)
 			realMatrix2 := matrix2.(*matrixContainer)
+			if realMatrix1.shape[1] != realMatrix2.shape[1] {
+				logger.Sugar().Fatalf("vector/matrix column size does not match: %d != %d", realMatrix1.shape[1], realMatrix2.shape[1])
+			}
 			// Check if shapes are compatible with current machine
 			if !slices.Equal(matrixShape1, realMatrix1.shape) || !slices.Equal(matrixShape2, realMatrix2.shape) {
 				if machine != nil {
