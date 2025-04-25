@@ -64,7 +64,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		meanVectors[i] = make([]float32, vectorLen)
 	}
 	var converged bool
-	for !converged {
+	for n := 0; n < config.KMEANS_ITTERATION_LIMIT && !converged; n++ {
 		bar.Increment()
 		// Create centroid matrix
 		centroidMatrix := compute.NewMatrix(centroids)
@@ -154,7 +154,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	sumVectors = sumVectors[:k]
 	meanVectors = meanVectors[:k]
 	converged = false
-	for !converged {
+	for n := 0; n < config.KMEANS_ITTERATION_LIMIT && !converged; n++ {
 		bar.Increment()
 		// Create centroid matrix
 		centroidMatrix := compute.NewMatrix(centroids)
