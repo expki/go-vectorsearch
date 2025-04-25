@@ -78,7 +78,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
-			vec := compute.DequantizeVector[float32](data[i])
+			vec := compute.DequantizeVectorFloat32(data[i])
 			for j, val := range vec {
 				sumVectors[centroidIdx][j] += val
 			}
@@ -96,7 +96,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		// Quantize means to get new centroids
-		newCentroids := compute.QuantizeMatrix(meanVectors)
+		newCentroids := compute.QuantizeMatrixFloat32(meanVectors)
 
 		// Check for convergence
 		converged = true
@@ -168,7 +168,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Accumulate vectors
 		for i, centroidIdx := range centroidIndexes {
-			vec := compute.DequantizeVector[float32](data[i])
+			vec := compute.DequantizeVectorFloat32(data[i])
 			for j, val := range vec {
 				sumVectors[centroidIdx][j] += val
 			}
@@ -186,7 +186,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 		}
 
 		// Quantize means to get new centroids
-		newCentroids := compute.QuantizeMatrix(meanVectors)
+		newCentroids := compute.QuantizeMatrixFloat32(meanVectors)
 
 		// Check for convergence
 		converged = true

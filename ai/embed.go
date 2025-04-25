@@ -113,7 +113,7 @@ func (e *Embedding) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*e = compute.QuantizeVector(vector)
+	*e = compute.QuantizeVectorFloat32(vector)
 	return nil
 }
 
