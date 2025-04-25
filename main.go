@@ -257,16 +257,29 @@ func prefTest() {
 	sim, done := compute.MatrixCosineSimilarity()
 	defer done()
 	sim(matrix1.Clone(), matrix2.Clone())
+
 	start := time.Now()
 	for range 10 {
 		sim(matrix1.Clone(), matrix2.Clone())
 	}
 	end := time.Since(start)
 	logger.Sugar().Infof("Performance Cosine: %s", end.String())
+
+	a := compute.DequantizeMatrixFloat32(embeddings)
+	b := compute.DequantizeMatrixFloat64(embeddings)
 	start = time.Now()
-	for range 10 {
-		matrix1 = compute.NewMatrix(embeddings)
+	for range 50 {
+		compute.QuantizeMatrixFloat32(a)
+		compute.QuantizeMatrixFloat64(b)
 	}
-	end = time.Since(start)
+	end = time.Since(start) / 5
 	logger.Sugar().Infof("Performance Quantization: %s", end.String())
+
+	start = time.Now()
+	for range 50 {
+		compute.DequantizeMatrixFloat32(embeddings)
+		compute.DequantizeMatrixFloat64(embeddings)
+	}
+	end = time.Since(start) / 5
+	logger.Sugar().Infof("Performance Dequantization: %s", end.String())
 }
