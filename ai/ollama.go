@@ -23,6 +23,8 @@ type ai struct {
 }
 
 type provider struct {
+	cfg config.Ollama
+
 	lock        sync.Mutex
 	uri         []*ollamaUrl
 	token       string
@@ -31,6 +33,7 @@ type provider struct {
 
 func newProvider(cfg config.Ollama) (*provider, error) {
 	p := &provider{
+		cfg:         cfg,
 		uri:         make([]*ollamaUrl, 0),
 		compression: cfg.Compression,
 	}

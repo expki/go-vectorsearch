@@ -37,6 +37,13 @@ type EmbedResponse struct {
 }
 
 func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedResponse, err error) {
+	if request.Options == nil {
+		request.Options = map[string]any{
+			"num_ctx": ai.embed.cfg.NumCtx,
+		}
+	} else if _, ok := request.Options["num_ctx"]; !ok {
+		request.Options["num_ctx"] = ai.embed.cfg.NumCtx
+	}
 	// Create request body
 	body, err := json.Marshal(request)
 	if err != nil {

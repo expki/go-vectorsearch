@@ -21,7 +21,7 @@ type ChatRequest struct {
 	Messages  []ChatMessage     `json:"messages"`
 	Tools     []json.RawMessage `json:"tools,omitempty"`
 	Format    string            `json:"format,omitempty"`
-	Options   json.RawMessage   `json:"options,omitempty"`
+	Options   map[string]any    `json:"options,omitempty"`
 	Stream    bool              `json:"stream"`
 	KeepAlive *time.Duration    `json:"keep_alive,omitempty"`
 }
@@ -48,6 +48,13 @@ type ChatMessage struct {
 }
 
 func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error) {
+	if request.Options == nil {
+		request.Options = map[string]any{
+			"num_ctx": ai.chat.cfg.NumCtx,
+		}
+	} else if _, ok := request.Options["num_ctx"]; !ok {
+		request.Options["num_ctx"] = ai.chat.cfg.NumCtx
+	}
 	// Create request body
 	request.Stream = false
 	body, err := json.Marshal(request)
@@ -112,6 +119,13 @@ type chatStream struct {
 }
 
 func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser) {
+	if request.Options == nil {
+		request.Options = map[string]any{
+			"num_ctx": ai.chat.cfg.NumCtx,
+		}
+	} else if _, ok := request.Options["num_ctx"]; !ok {
+		request.Options["num_ctx"] = ai.chat.cfg.NumCtx
+	}
 	request.Stream = true
 	stream, writer := io.Pipe()
 

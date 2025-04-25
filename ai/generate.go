@@ -43,6 +43,13 @@ type GenerateResponse struct {
 }
 
 func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response GenerateResponse, err error) {
+	if request.Options == nil {
+		request.Options = map[string]any{
+			"num_ctx": ai.generate.cfg.NumCtx,
+		}
+	} else if _, ok := request.Options["num_ctx"]; !ok {
+		request.Options["num_ctx"] = ai.generate.cfg.NumCtx
+	}
 	// Create request body
 	request.Stream = false
 	body, err := json.Marshal(request)
