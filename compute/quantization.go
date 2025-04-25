@@ -6,22 +6,15 @@ import (
 )
 
 func Quantize[T float32 | float64](value T, min T, max T) (valueQuantized uint8) {
-	switch any(value).(type) {
-	case float32:
-		valueQuantized = QuantizeFloat32(any(value).(float32), any(min).(float32), any(max).(float32))
-	case float64:
-		valueQuantized = QuantizeFloat64(any(value).(float64), any(min).(float64), any(max).(float64))
-	default:
-		if value < min {
-			value = min
-		} else if value > max {
-			value = max
-		}
-		// Normalize the value to the range [0, 1]
-		normalized := (value - min) / (max - min)
-		// Scale to [0, 255] and convert to uint8
-		valueQuantized = uint8(normalized * 255)
+	if value < min {
+		value = min
+	} else if value > max {
+		value = max
 	}
+	// Normalize the value to the range [0, 1]
+	normalized := (value - min) / (max - min)
+	// Scale to [0, 255] and convert to uint8
+	valueQuantized = uint8(normalized * 255)
 	return valueQuantized
 }
 
@@ -52,17 +45,10 @@ func QuantizeFloat64(value float64, min float64, max float64) (valueQuantized ui
 }
 
 func Dequantize[T float32 | float64](valueQuantized uint8, min T, max T) (value T) {
-	switch any(min).(type) {
-	case float32:
-		value = T(DequantizeFloat32(valueQuantized, float32(min), float32(max)))
-	case float64:
-		value = T(DequantizeFloat64(valueQuantized, float64(min), float64(max)))
-	default:
-		// Normalize the uint8 value to the range [0, 1]
-		normalized := T(valueQuantized) / 255.0
-		// Scale back to the original range [min, max]
-		value = min + normalized*(max-min)
-	}
+	// Normalize the uint8 value to the range [0, 1]
+	normalized := T(valueQuantized) / 255.0
+	// Scale back to the original range [min, max]
+	value = min + normalized*(max-min)
 	return value
 }
 
@@ -83,19 +69,12 @@ func DequantizeFloat64(valueQuantized uint8, min float64, max float64) (value fl
 }
 
 func QuantizeVector[T float32 | float64](vector []T) (vectorQuantized []uint8) {
-	switch value := any(vector).(type) {
-	case []float32:
-		vectorQuantized = QuantizeVectorFloat32(value)
-	case []float64:
-		vectorQuantized = QuantizeVectorFloat64(value)
-	default:
-		vectorQuantized = make([]uint8, 8+len(vector))
-		min, max := rangeFloat(vector)
-		binary.LittleEndian.PutUint32(vectorQuantized, math.Float32bits(float32(min)))
-		binary.LittleEndian.PutUint32(vectorQuantized[4:], math.Float32bits(float32(max)))
-		for i, value := range vector {
-			vectorQuantized[8+i] = Quantize(value, T(min), T(max))
-		}
+	vectorQuantized = make([]uint8, 8+len(vector))
+	min, max := rangeFloat(vector)
+	binary.LittleEndian.PutUint32(vectorQuantized, math.Float32bits(float32(min)))
+	binary.LittleEndian.PutUint32(vectorQuantized[4:], math.Float32bits(float32(max)))
+	for i, value := range vector {
+		vectorQuantized[8+i] = Quantize(value, T(min), T(max))
 	}
 	return vectorQuantized
 }
@@ -124,21 +103,10 @@ func QuantizeVectorFloat64(vector []float64) (vectorQuantized []uint8) {
 
 func DequantizeVector[T float32 | float64](vectorQuantized []uint8) (vector []T) {
 	vector = make([]T, len(vectorQuantized)-8)
-	switch any(vector).(type) {
-	case []float32:
-		for idx, val := range DequantizeVectorFloat32(vectorQuantized) {
-			vector[idx] = T(val)
-		}
-	case []float64:
-		for idx, val := range DequantizeVectorFloat64(vectorQuantized) {
-			vector[idx] = T(val)
-		}
-	default:
-		min := T(math.Float32frombits(binary.LittleEndian.Uint32(vectorQuantized)))
-		max := T(math.Float32frombits(binary.LittleEndian.Uint32(vectorQuantized[4:])))
-		for i, value := range vectorQuantized[8:] {
-			vector[i] = Dequantize(value, min, max)
-		}
+	min := T(math.Float32frombits(binary.LittleEndian.Uint32(vectorQuantized)))
+	max := T(math.Float32frombits(binary.LittleEndian.Uint32(vectorQuantized[4:])))
+	for i, value := range vectorQuantized[8:] {
+		vector[i] = Dequantize(value, min, max)
 	}
 	return vector
 }
@@ -164,16 +132,9 @@ func DequantizeVectorFloat64(vectorQuantized []uint8) (vector []float64) {
 }
 
 func QuantizeMatrix[T float32 | float64](matrix [][]T) (matrixQuantized [][]uint8) {
-	switch value := any(matrix).(type) {
-	case [][]float32:
-		matrixQuantized = QuantizeMatrixFloat32(value)
-	case [][]float64:
-		matrixQuantized = QuantizeMatrixFloat64(value)
-	default:
-		matrixQuantized = make([][]uint8, len(matrix))
-		for i, vector := range matrix {
-			matrixQuantized[i] = QuantizeVector(vector)
-		}
+	matrixQuantized = make([][]uint8, len(matrix))
+	for i, vector := range matrix {
+		matrixQuantized[i] = QuantizeVector(vector)
 	}
 	return matrixQuantized
 }
@@ -196,25 +157,8 @@ func QuantizeMatrixFloat64(matrix [][]float64) (matrixQuantized [][]uint8) {
 
 func DequantizeMatrix[T float32 | float64](matrixQuantized [][]uint8) (matrix [][]T) {
 	matrix = make([][]T, len(matrixQuantized))
-	switch any(matrix).(type) {
-	case [][]float32:
-		for row, vector := range DequantizeMatrixFloat32(matrixQuantized) {
-			matrix[row] = make([]T, len(vector))
-			for col, val := range vector {
-				matrix[row][col] = T(val)
-			}
-		}
-	case [][]float64:
-		for row, vector := range DequantizeMatrixFloat64(matrixQuantized) {
-			matrix[row] = make([]T, len(vector))
-			for col, val := range vector {
-				matrix[row][col] = T(val)
-			}
-		}
-	default:
-		for i, vector := range matrixQuantized {
-			matrix[i] = DequantizeVector[T](vector)
-		}
+	for i, vector := range matrixQuantized {
+		matrix[i] = DequantizeVector[T](vector)
 	}
 	return matrix
 }
@@ -236,23 +180,12 @@ func DequantizeMatrixFloat64(matrixQuantized [][]uint8) (matrix [][]float64) {
 }
 
 func rangeFloat[T float32 | float64](slice []T) (min T, max T) {
-	switch value := any(slice).(type) {
-	case []float32:
-		minV, maxV := rangeFloat32(value)
-		min = T(minV)
-		max = T(maxV)
-	case []float64:
-		minV, maxV := rangeFloat64(value)
-		min = T(minV)
-		max = T(maxV)
-	default:
-		for _, v := range slice {
-			if v < min {
-				min = v
-			}
-			if v > max {
-				max = v
-			}
+	for _, v := range slice {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
 		}
 	}
 	return min, max
