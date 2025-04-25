@@ -13,7 +13,7 @@ func NewVector(vectorQuantized []uint8) Vector {
 	if cols <= 0 {
 		panic("vector columns are empty")
 	}
-	vector := dequantizeVectorFloat64(vectorQuantized)
+	vector := DequantizeVectorFloat64(vectorQuantized)
 	return &vectorContainer{
 		dense: tensor.New(tensor.WithBacking(vector), tensor.WithShape(1, cols)),
 		shape: tensor.Shape{cols},
@@ -29,7 +29,7 @@ func NewMatrix(matrixQuantized [][]uint8) Matrix {
 	if cols <= 0 {
 		panic("matrix columns are empty")
 	}
-	matrix := dequantizeMatrixFloat64(matrixQuantized)
+	matrix := DequantizeMatrixFloat64(matrixQuantized)
 	flat := make([]float32, rows*cols)
 	for i, row := range matrix {
 		copy(flat[i*cols:], row)

@@ -26,7 +26,7 @@ func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity
 	normalizeVector(A)
 
 	// Normalize each row in B in-place
-	for i := 0; i < n; i++ {
+	for i := range n {
 		start := i * dim
 		end := start + dim
 		normalizeVector(B[start:end])
@@ -38,12 +38,12 @@ func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity
 	// Compute dot products (cosine similarity)
 	var maxSim float64 = -1 // cosine similarity range is [-1, 1]
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		start := i * dim
 
 		// Dot product between A and B[i]
 		var dot float64
-		for j := 0; j < dim; j++ {
+		for j := range dim {
 			dot += A[j] * B[start+j]
 		}
 
@@ -83,12 +83,12 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 	n := BShape.rows // Data
 
 	// Normalize all rows in A (centroids)
-	for i := 0; i < m; i++ {
+	for i := range m {
 		normalizeVector(A[i*dim : (i+1)*dim])
 	}
 
 	// Normalize all rows in B (data)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		normalizeVector(B[i*dim : (i+1)*dim])
 	}
 
@@ -96,18 +96,18 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 	sims := make([]float32, n)
 	argmax := make([]int, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		Brow := B[i*dim : (i+1)*dim]
 
 		maxVal := -1.0
 		maxIdx := 0
 
-		for j := 0; j < m; j++ {
+		for j := range m {
 			Arow := A[j*dim : (j+1)*dim]
 
 			// Dot product (cosine similarity)
 			var dot float64
-			for k := 0; k < dim; k++ {
+			for k := range dim {
 				dot += Arow[k] * Brow[k]
 			}
 

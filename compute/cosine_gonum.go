@@ -32,14 +32,14 @@ func (vector *vectorContainer) MatrixCosineSimilarity(matrix Matrix) (similarity
 	scores := make([]float64, n)
 
 	// scores = B * Aᵗ (each row of B ⋅ A)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		scores[i] = impl.Ddot(dim, B[i*dim:], 1, A, 1)
 	}
 
 	// Convert to float32 and find argmax
 	sims := make([]float32, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sims[i] = float32(scores[i])
 	}
 
@@ -96,12 +96,12 @@ func (matrix1 *matrixContainer) MatrixCosineSimilarity(matrix2 Matrix) (relative
 	sims := make([]float32, len(C)) // n * m
 	argmax := make([]int, n)        // one best match per row of B
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rowOffset := i * m
 		maxIdx := 0
 		maxVal := C[rowOffset]
 
-		for j := 0; j < m; j++ {
+		for j := range m {
 			v := C[rowOffset+j]
 			sims[rowOffset+j] = float32(v)
 			if v > maxVal {
@@ -128,7 +128,7 @@ func MatrixCosineSimilarity() (calculate func(matrix1 Matrix, matrix2 Matrix) (r
 // normalizeMatrixRows normalizes each row vector by dividing each element by its L2 norm.
 func normalizeMatrixRows(data []float64, rows, cols int) {
 	impl := blas64.Implementation()
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		offset := i * cols
 		row := data[offset : offset+cols]
 
