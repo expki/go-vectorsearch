@@ -32,7 +32,7 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 	defer closeGraph()
 
 	// Step 2: Randomly initialize unique centroids superset
-	kS := min(len(data), k*2)
+	kS := min(len(data), k*config.SUPERSET_MUL)
 	centroids := make([][]uint8, 0, kS)
 	used := make(map[int]struct{}, kS)
 	for len(centroids) < kS {
