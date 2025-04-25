@@ -80,7 +80,13 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) (initialize 
 	c.concurrent = nil
 	c = nil
 
+	var initialized *dataset = nil
+
 	return func() *dataset {
+		if initialized != nil {
+			return initialized
+		}
+
 		// move reader to start and set buffer
 		X.Reset()
 
@@ -95,6 +101,7 @@ func (c *createDataset) Finalize(multibar *mpb.Progress, id uint64) (initialize 
 		// move reader to start
 		X.Reset()
 
+		initialized = X
 		return X
 	}
 }

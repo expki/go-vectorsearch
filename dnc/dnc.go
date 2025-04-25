@@ -23,7 +23,10 @@ import (
 )
 
 // TODO: limit memory usage
-var queue = make(chan struct{}, max(1, runtime.NumCPU()))
+var (
+	parallel = max(1, runtime.NumCPU())
+	queue    = make(chan struct{}, parallel)
+)
 
 func KMeansDivideAndConquer(ctx context.Context, db *database.Database, categoryID uint64, folderPath string) (err error) {
 	// get embedding count
@@ -106,9 +109,25 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to read database embeddings"), err)
 	}
 
+	// produce final sample
+	logger.Sugar().Debug("Sampling data for final k-means")
+	X := dataWriter.Finalize(multibar, 0)
+	Xer := X()
+	dataSample := make([][]uint8, min(int(Xer.total), config.SAMPLE_SIZE*parallel))
+	n := 0
+	for idx := range dataSample {
+		row := Xer.ReadRow()
+		if row == nil {
+			dataSample = dataSample[:n]
+			break
+		}
+		dataSample[idx] = row
+		n++
+	}
+	Xer.Reset()
+
 	// divide and conquer
 	logger.Sugar().Debug("Starting Divide and Conquer")
-	X := dataWriter.Finalize(multibar, 0)
 	Y := make(chan []uint8)
 	instance := &atomic.Uint64{}
 	concurrent := &atomic.Int64{}
@@ -121,6 +140,10 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	for centroid := range Y {
 		centroids = append(centroids, centroid)
 	}
+
+	// final k-means
+	logger.Sugar().Debug("Processing final k-means")
+	centroids = kMeansFinal(multibar, instance.Add(1), centroids, dataSample)
 
 	// retrieve current centroids
 	logger.Sugar().Debug("Retrieving database centroids")
