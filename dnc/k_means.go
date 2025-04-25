@@ -100,8 +100,8 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Check for convergence
 		converged = true
-		for i := range centroids {
-			if !bytes.Equal(newCentroids[i], centroids[i]) {
+		for i, centroid := range centroids {
+			if !bytes.Equal(newCentroids[i][8:], centroid[8:]) {
 				converged = false
 				break
 			}
@@ -190,8 +190,8 @@ func kMeans(multibar *mpb.Progress, id uint64, data [][]uint8, k int) [][]uint8 
 
 		// Check for convergence
 		converged = true
-		for i := range centroids {
-			if !bytes.Equal(newCentroids[i], centroids[i]) {
+		for i, centroid := range centroids {
+			if !bytes.Equal(newCentroids[i][8:], centroid[8:]) {
 				converged = false
 				break
 			}
