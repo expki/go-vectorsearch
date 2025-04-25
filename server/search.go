@@ -26,7 +26,6 @@ import (
 type SearchRequest struct {
 	Owner     string `json:"owner"`
 	Category  string `json:"category"`
-	Prefix    string `json:"prefix,omitempty"`
 	Text      string `json:"text"`
 	Count     uint   `json:"count"`
 	Offset    uint   `json:"offset,omitempty"`
@@ -124,9 +123,6 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	logger.Sugar().Debug("search request received")
 
 	// Get embedding
-	if req.Prefix != "" {
-		req.Text = fmt.Sprintf(`%s. %s`, req.Prefix, req.Text)
-	}
 	logger.Sugar().Debug("embedding search query")
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
 		Model: s.config.AI.Embed.Model,

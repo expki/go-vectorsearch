@@ -67,28 +67,33 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 	client, close := ai.clientManager.GetHttpClient(uri.Host)
 	defer close()
 	resp, err := client.Do(req)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return response, err
-		}
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return response, err
+	} else {
 		return response, errors.Join(errors.New("failed to send request"), err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return response, fmt.Errorf("response returned bad status code %s: %d", uri.String(), resp.StatusCode)
-	}
 	// Read response
-	buf, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return response, errors.Join(errors.New("failed to read response body"), err)
-	}
-	if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
-		buf, err = decompress(buf)
+	body = nil
+	if resp.Body != nil {
+		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return response, errors.Join(errors.New("failed to decompress response"), err)
+			resp.Body.Close()
+			return response, errors.Join(errors.New("failed to read response body"), err)
+		}
+		resp.Body.Close()
+		if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
+			body, err = decompress(body)
+			if err != nil {
+				return response, errors.Join(errors.New("failed to decompress response"), err)
+			}
 		}
 	}
-	err = json.Unmarshal(buf, &response)
+	if resp.StatusCode != http.StatusOK {
+		return response, fmt.Errorf("%s (%d): %s", uri.String(), resp.StatusCode, string(body))
+	}
+	// Decode response
+	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to unmarshal response"), err)
 	}

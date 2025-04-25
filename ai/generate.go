@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
 	_ "github.com/expki/go-vectorsearch/env"
@@ -69,19 +69,31 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 	if err != nil {
 		return response, errors.Join(errors.New("failed to send request"), err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return response, fmt.Errorf("response returned bad status code: %d", resp.StatusCode)
-	}
 	// Read response
-	buf, err := io.ReadAll(resp.Body)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return response, err
+	body = nil
+	if resp.Body != nil {
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			return response, errors.Join(errors.New("failed to read response body"), err)
 		}
-		return response, errors.Join(errors.New("failed to read response body"), err)
+		resp.Body.Close()
+		if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
+			body, err = decompress(body)
+			if err != nil {
+				return response, errors.Join(errors.New("failed to decompress response"), err)
+			}
+		}
 	}
-	err = json.Unmarshal(buf, &response)
+	if resp.StatusCode != http.StatusOK {
+		return response, fmt.Errorf("%s (%d): %s", uri.String(), resp.StatusCode, string(body))
+	}
+	// Decode response
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return response, errors.Join(errors.New("failed to unmarshal response"), err)
+	}
+	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
