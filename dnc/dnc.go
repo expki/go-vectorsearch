@@ -268,21 +268,25 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	}
 
 	// Re-center centroids
+	var wg sync.WaitGroup
 	for _, dbCentroid := range dbCentroids {
 		queue <- struct{}{}
 		if ctx.Err() != nil {
 			<-queue
 			break
 		}
+		wg.Add(1)
 		go func() {
 			err = recenterDbCentroid(ctx, multibar, db, dbCentroid)
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) {
 				logger.Sugar().Errorf("recenter db centroids: %s", err.Error())
 			}
 			<-queue
+			wg.Done()
 		}()
 	}
 
+	wg.Wait()
 	multibar.Wait()
 	logger.Sugar().Infof("Refresh centroids completed (%d)", instance.Load())
 	return nil
