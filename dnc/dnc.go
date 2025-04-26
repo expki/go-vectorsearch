@@ -1,12 +1,15 @@
 package dnc
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 )
 
 // TODO: limit memory usage
+// TODO: limit to 1 for SQLLite
 var (
 	parallel = max(1, runtime.NumCPU())
 	queue    = make(chan struct{}, parallel)
@@ -109,25 +113,9 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return errors.Join(errors.New("failed to read database embeddings"), err)
 	}
 
-	// produce final sample
-	logger.Sugar().Debug("Sampling data for final k-means")
-	X := dataWriter.Finalize(multibar, 0)
-	Xer := X()
-	dataSample := make([][]uint8, min(int(Xer.total), config.SAMPLE_SIZE*parallel))
-	n := 0
-	for idx := range dataSample {
-		row := Xer.ReadRow()
-		if row == nil {
-			dataSample = dataSample[:n]
-			break
-		}
-		dataSample[idx] = row
-		n++
-	}
-	Xer.Reset()
-
 	// divide and conquer
 	logger.Sugar().Debug("Starting Divide and Conquer")
+	X := dataWriter.Finalize(multibar, 0)
 	Y := make(chan []uint8)
 	instance := &atomic.Uint64{}
 	concurrent := &atomic.Int64{}
@@ -141,15 +129,11 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		centroids = append(centroids, centroid)
 	}
 
-	// final k-means
-	logger.Sugar().Debug("Processing final k-means")
-	centroids = kMeansFinal(multibar, instance.Add(1), centroids, dataSample)
-
 	// retrieve current centroids
 	logger.Sugar().Debug("Retrieving database centroids")
 	var dbCentroids []database.Centroid
 	err = db.WithContext(ctx).Clauses(dbresolver.Read).
-		Take(&dbCentroids, "category_id = ?", categoryID).
+		Find(&dbCentroids, "category_id = ?", categoryID).
 		Error
 	if err == nil {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -233,24 +217,33 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 			}
 
 			// update embeddings in database
+			var wg sync.WaitGroup
 			for centroidID, embeddingIDs := range updateMap {
 				if len(embeddingIDs) == 0 {
 					continue
 				}
-				err = db.WithContext(ctx).Clauses(dbresolver.Write).
-					Model(&database.Embedding{}).
-					Where("id IN ?", embeddingIDs).
-					Update("centroid_id", centroidID).
-					Error
-				if err == nil {
-				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-					return err
-				} else {
-					return errors.Join(errors.New("failed to update database embeddings"), err)
+				queue <- struct{}{}
+				if ctx.Err() != nil {
+					<-queue
+					return ctx.Err()
 				}
+				wg.Add(1)
+				go func(centroidID uint64, embeddingIDs []uint64) {
+					err = db.WithContext(ctx).Clauses(dbresolver.Write).
+						Model(&database.Embedding{}).
+						Where("id IN ?", embeddingIDs).
+						Update("centroid_id", centroidID).
+						Error
+					if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) {
+						logger.Sugar().Errorf("failed to update database embeddings (%d): %s", centroidID, err.Error())
+					}
+					<-queue
+					wg.Done()
+				}(centroidID, embeddingIDs)
 			}
 
 			// increment progress bar
+			wg.Wait()
 			now := time.Now()
 			bar.EwmaIncrBy(len(updates), now.Sub(start))
 			start = now
@@ -263,6 +256,31 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 		return err
 	} else {
 		return errors.Join(errors.New("failed to read database embeddings"), err)
+	}
+
+	// drop small
+	err = dropSmallCentroids(ctx, multibar, db)
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return err
+	} else {
+		return errors.Join(errors.New("failed to drop small centroids"), err)
+	}
+
+	// Re-center centroids
+	for _, dbCentroid := range dbCentroids {
+		queue <- struct{}{}
+		if ctx.Err() != nil {
+			<-queue
+			break
+		}
+		go func() {
+			err = recenterDbCentroid(ctx, multibar, db, dbCentroid)
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) {
+				logger.Sugar().Errorf("recenter db centroids: %s", err.Error())
+			}
+			<-queue
+		}()
 	}
 
 	multibar.Wait()
@@ -371,4 +389,178 @@ func divideNconquer(ctx context.Context, multibar *mpb.Progress, concurrent *ato
 	}
 
 	return
+}
+
+func recenterDbCentroid(ctx context.Context, multibar *mpb.Progress, db *database.Database, centroid database.Centroid) (err error) {
+	// progress bar
+	bar := multibar.AddBar(
+		0,
+		mpb.PrependDecorators(
+			decor.Name(fmt.Sprintf("Recenter centroid %d: ", centroid.ID)),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_HHMMSS, 300),
+		),
+	)
+	defer bar.EnableTriggerComplete()
+
+	// load centroid embeddings
+	dataSum := make([]float64, len(compute.DequantizeVectorFloat64(centroid.Vector)))
+	var count uint64 = 0
+	var embeddings []database.Embedding
+	err = db.WithContext(ctx).Clauses(dbresolver.Read).
+		Where("centroid_id = ?", centroid.ID).
+		Select("id", "vector").
+		FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) error {
+			elen := len(embeddings)
+			if elen == 0 {
+				return nil
+			}
+			for _, embedding := range embeddings {
+				for idx, val := range compute.DequantizeVectorFloat64(embedding.Vector) {
+					dataSum[idx] += val
+				}
+				count++
+			}
+			bar.IncrBy(elen)
+			return nil
+		}).
+		Error
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return err
+	} else {
+		return errors.Join(errors.New("failed to read database embeddings"), err)
+	}
+
+	// calculate mean
+	for idx, val := range dataSum {
+		dataSum[idx] = val / float64(count)
+	}
+	meanVector := compute.QuantizeVectorFloat64(dataSum)
+
+	// update centroid vector
+	centroid.Vector = meanVector
+	return db.WithContext(ctx).Clauses(dbresolver.Write).
+		Save(&centroid).
+		Error
+}
+
+func dropSmallCentroids(ctx context.Context, multibar *mpb.Progress, db *database.Database) (err error) {
+	type result struct {
+		ID     uint64
+		Vector []byte
+		Total  int64
+	}
+	var results []result
+	err = db.WithContext(ctx).Clauses(dbresolver.Read).
+		Model(&database.Centroid{}).
+		Joins("INNER JOIN embeddings ON embeddings.centroid_id = centroids.id").
+		Select("centroids.id", "centroids.vector", "COUNT(*) as total").
+		Group("centroids.id").Group("centroids.vector").
+		Find(&results).
+		Error
+	if err == nil {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return err
+	} else {
+		return errors.Join(errors.New("failed to read centroid total embeddings"), err)
+	}
+	if len(results) <= 1 {
+		return nil
+	}
+	slices.SortFunc(results, func(a, b result) int {
+		return cmp.Compare(a.Total, b.Total)
+	})
+	var oldCentroids []result
+	for idx, item := range results[:len(results)-1] {
+		if item.Total < (config.CENTROID_SIZE / 10) {
+			oldCentroids = results[:idx]
+			results = results[idx:]
+			break
+		}
+	}
+	centroids := make([][]uint8, len(results))
+	for idx, item := range results {
+		centroids[idx] = item.Vector
+	}
+	centroidMatrix := compute.NewMatrix(centroids)
+
+	// create new cosine similarity graph
+	cosineSim, closeGraph := compute.MatrixCosineSimilarity()
+	defer closeGraph()
+	var wg sync.WaitGroup
+	for _, oldCentroid := range oldCentroids {
+		queue <- struct{}{}
+		if ctx.Err() != nil {
+			<-queue
+			break
+		}
+		wg.Add(1)
+		go func() {
+			bar := multibar.AddBar(
+				0,
+				mpb.PrependDecorators(
+					decor.Name(fmt.Sprintf("Dropping centroid centroid %d: ", oldCentroid.ID)),
+					decor.CountersNoUnit("%d / %d"),
+				),
+				mpb.AppendDecorators(
+					decor.EwmaETA(decor.ET_STYLE_HHMMSS, 300),
+				),
+			)
+			defer bar.EnableTriggerComplete()
+			var embeddings []database.Embedding
+			err := db.WithContext(ctx).Clauses(dbresolver.Read).
+				Where("centroid_id = ?", oldCentroid.ID).
+				Select("id", "vector").
+				FindInBatches(&embeddings, config.BATCH_SIZE_DATABASE, func(tx *gorm.DB, batch int) error {
+					elen := len(embeddings)
+					if elen == 0 {
+						return nil
+					}
+					data := make([][]uint8, elen)
+					for idx, embedding := range embeddings {
+						data[idx] = embedding.Vector
+					}
+					dataMatrix := compute.NewMatrix(data)
+					updates := make(map[uint64][]uint64, len(centroids))
+					_, centroidIds := cosineSim(centroidMatrix.Clone(), dataMatrix)
+					for embeddingIdx, centroidId := range centroidIds {
+						mapId := uint64(centroidId)
+						embeddingId := embeddings[embeddingIdx].ID
+						list, ok := updates[mapId]
+						if !ok {
+							list = []uint64{embeddingId}
+						} else {
+							list = append(list, embeddingId)
+						}
+						updates[mapId] = list
+					}
+					for centroidId, embeddingIds := range updates {
+						err = db.WithContext(ctx).Clauses(dbresolver.Write).
+							Model(&database.Embedding{}).
+							Where("id IN ?", embeddingIds).
+							Update("centroid_id", centroidId).
+							Error
+						if err == nil {
+						} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+							return err
+						} else {
+							return errors.Join(errors.New("failed to update embeddings centroid"), err)
+						}
+					}
+					bar.IncrBy(elen)
+					return nil
+				}).
+				Error
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) {
+				logger.Sugar().Errorf("failed to update embeddings centroid: %v", err)
+			}
+			<-queue
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	return nil
 }
