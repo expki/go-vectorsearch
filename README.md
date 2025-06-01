@@ -4,6 +4,11 @@ Vectorsearch is a high-performance vector search engine that indexes AI-generate
 
 ## Demo: [https://vectorsearch.vdh.dev/](https://vectorsearch.vdh.dev/)
 
+## Projects Used 
+
+- [https://github.com/expki/vectorpedia](https://github.com/expki/vectorpedia/)  
+  A Wikipedia search engine powered by this Vector Search library.
+
 ## Design
 
 ```mermaid
