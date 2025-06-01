@@ -1,65 +1,102 @@
-# VectorSearch Project
+# VectorSearch
 
-## Overview
-This project uses Ollama to generate vector embeddings for uploaded documents and provides search functions that allow users to query previous uploads. Documents can be stored in either SQLite or PostgreSQL databases.
+Vectorsearch is a high-performance vector search engine that indexes AI-generated embeddings from uploaded documents, files, and text. It features a fast search interface powered by a Flat index with centroids generated using a divide-and-conquer strategy for efficient multi-core processing. Supports AVX-accelerated CPU execution, with GPU support planned. This library is to be imported as a vector search engine in projects and it's UI is not meant for production use.
 
-### Demo
+## Demo: [https://vectorsearch.vdh.dev/](https://vectorsearch.vdh.dev/)
 
-#### Personal Vector Store App
-- [https://vectorsearch.vdh.dev](https://vectorsearch.vdh.dev)
+## Design
 
-#### Wikipedia Vector Search App
-- [https://vectorpedia.vdh.dev](https://vectorpedia.vdh.dev)
+```mermaid
+graph TD
+  subgraph Client
+    A[Upload Document]
+    B[Search Query]
+  end
 
-## Features
-- **Vector Embeddings**: Utilizes Ollama to create vector embeddings from user-uploaded documents.
-- **Search Functionality**: Enables users to perform searches through previously uploaded documents using the generated embeddings.
-- **Database Storage**: Supports storing documents in either SQLite for simplicity and local development, or PostgreSQL for more robust production environments.
-- **Swagger Documentation**: Comes with Swagger documentation for easy API interaction and testing.
+  subgraph Server
+    C[Centroids]
+  end
 
-## Operations
-Download a release.
-Running the executable will produce a `config.json` file in the current directory. Modify this file to configure your database settings and other parameters.
+  subgraph Database
+    D[SQLite / PostgreSQL]
+  end
 
-### Installation
-- Prerequisites
-    - Debian-based Linux, WSL or Windows
-    - Go 1.24 or later
+  subgraph AI
+    E[OpenAI / Ollama]
+  end
 
-#### Linux
-
-- Ollama:
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2
-ollama pull nomic-embed-text
+  A -->| Document | E
+  B -->| Query | E
+  E -->| Vector | C
+  C -->| Vector | D
 ```
 
-- Vector Search:
+## Technologies Used
+
+- **Cosine Similarity**
+  Cosine similarity measures the similarity between two vectors by calculating the cosine of the angle between them.
+  This is used to produce a percentage match between documents and user search queries. 
+
+- **Vector Flat Index**
+  Vector Flat Index samples a set of vectors from the dataset to act as centroid allowing search quries to be narrowed down to smaller subsets on which the vector search can occure.
+  This indexing method enables data to be inserted without rebuilding the index (a very expensive operation in vector databases).
+
+- **Divide and Conquer**
+  Divide and Conquer strategy sub-divides the main problem into subproblems solving which can be solved easier and in parallel.
+  This solves the scalability problem of Vector Flat Index. 
+
+- **Quantization**
+  Quantization reduces the memory footprint of vector embeddings without significantly impacting result accuracy.
+  This project scales all float64 (8-byte) & float32 (4-byte) vectors to 1-byte with weights targeting 99.8% accuracy.
+
+- **Gonum**
+  Enables AVX, AVX2 & AVX512 CPU acceleration of Cosine Similarity enabling a ×10 faster Cosine Similarity. 
+
+- **Gorgonia**
+  Provides alternative AVX CPU acceleration to Gonum and will power the GPU acceleration in the future.
+
+- **Gorm**
+  A Golang Object-Relational Mapper enabling strongly typed Relational Database queries.
+
+## Development
+
+This project has five main components:
+
+1. Compute  
+  The `compute/` directory implements the Cosine Similarity and Quantization methods.
+
+2. Database  
+  The `database/` directory implements PostgreSQL / SQLite client connection and auto migration schema.
+
+3. Divide and Conquer  
+  The `dnc/` directory implements the flat vector indexing implementation utilizing a custom Divide and Conquer strategy. 
+
+4. Divide and Conquer  
+  The `server/` implements the libary methods and API methods to use the vector search engine. 
+
+5. Website  
+  The `ui/` directory implements vector search engine website where users can upload and search. 
+
+- Dependancies
+  - Linux (or Windows with WSL), Windows (not fun to get working)
+  - Golang >=1.24.3
+  - GCC => 8.0
+  - Node >= 22.0
+  - OpenAI / Ollama API URL
+
+- Run development
 ```bash
-git clone https://github.com/go-vectorsearch.git
-cd go-vectorsearch
+go run .
+```
+
+- Build for production
+```bash
 ./build.sh
 ```
 
-#### Windows
+## Operations
 
-- Ollama:
-    - [https://ollama.com/download/OllamaSetup.exe](https://ollama.com/download/OllamaSetup.exe)
-```powershell
-ollama pull llama3.2
-ollama pull nomic-embed-text
-```
-
-- Vector Search:
-```powershell
-git clone https://github.com/go-vectorsearch.git
-cd go-vectorsearch
-Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui.css -OutFile ./static/api/swagger-ui.css
-Invoke-WebRequest -Uri https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js -OutFile ./static/api/swagger-ui-bundle.js
-New-Item -ItemType Directory -Force -Path ./build/
-go build -tags='avx' -o ./build/vectorsearch .
-```
+Running the executable will produce a `config.json` file in the current directory. Modify this file to configure your database settings and other parameters.
 
 ### Run App
 The configuration file is auto generated if it does not exist.
@@ -114,10 +151,3 @@ Not all configuration is required, the autogenerated configuration is sufficient
     "log_level": "error"
 }
 ```
-
-## Development
-To get started with this project, first follow the installation instructions.
-
-### Run
-
-- `go run . config.json`
