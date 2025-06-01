@@ -1,8 +1,6 @@
 package database
 
 import (
-	"time"
-
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
@@ -18,11 +16,13 @@ type Embedding struct {
 }
 
 type Document struct {
-	ID          uint64        `gorm:"primarykey"`
-	Name        string        `gorm:"not null"`
-	ExternalID  string        `gorm:"not null"`
-	LastUpdated time.Time     `gorm:"index:idx_document_updated;not null"`
-	Document    DocumentField `gorm:"not null"`
+	ID         uint64        `gorm:"primarykey"`
+	ExternalID string        `gorm:"not null"`
+	Document   DocumentField `gorm:"not null"`
+
+	Title            *string
+	TitleEmbeddingID *uint64    `gorm:"index:idx_document_title_embedding"`
+	TitleEmbedding   *Embedding `gorm:"foreignKey:TitleEmbeddingID"`
 
 	// Parent
 	CategoryID uint64    `gorm:"not null"`
@@ -33,9 +33,8 @@ type Document struct {
 }
 
 type Centroid struct {
-	ID          uint64    `gorm:"primarykey"`
-	Vector      []byte    `gorm:"not null"`
-	LastUpdated time.Time `gorm:"index:idx_centroid_updated;not null"`
+	ID     uint64 `gorm:"primarykey"`
+	Vector []byte `gorm:"not null"`
 
 	// Parent
 	CategoryID uint64    `gorm:"index:idx_centroid_category;not null"`

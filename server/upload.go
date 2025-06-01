@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -28,7 +27,7 @@ type UploadRequest struct {
 }
 
 type DocumentUpload struct {
-	Name       string `json:"name,omitempty"`
+	Title      string `json:"title,omitempty"`
 	ExternalID string `json:"external_id,omitempty"`
 	Document   any    `json:"document"`
 }
@@ -113,29 +112,26 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, errors.New("no documents provided")
 	}
 
-	// Generate embeddings
+	// Split document
 	logger.Sugar().Debug("preparing documents")
-	embeddingCountPerDocumentList := make([]int, len(req.Documents))
-	embeddingInputList := make([]string, 0, len(req.Documents))
-	for idx, file := range req.Documents {
-		prefix := ""
-		if file.Name != "" {
-			prefix = strings.TrimSuffix(strings.TrimSpace(file.Name), ".") + ". "
+	uploadingFiles := make(uploadingList, 0, len(req.Documents))
+	for _, document := range req.Documents {
+		if uploadingFile := newUploading(document.Title, Split("", Flatten(document.Document), s.config.AI.Embed.GetNumCtx())); uploadingFile.CountEmbeddings() > 0 {
+			uploadingFiles = append(
+				uploadingFiles,
+				uploadingFile,
+			)
 		}
-		document := Flatten(file.Document)
-		sections := Split(prefix, document, s.config.AI.Embed.GetNumCtx())
-		for idx, section := range sections {
-			sections[idx] = fmt.Sprintf("search_document: %s", section)
-		}
-		embeddingCountPerDocumentList[idx] = len(sections)
-		embeddingInputList = append(embeddingInputList, sections...)
+	}
+	if uploadingFiles.CountEmbeddings() == 0 {
+		return res, errors.New("empty documents provided")
 	}
 
-	// Get embeddings
+	// Generate embeddings
 	logger.Sugar().Debug("generating embeddings")
 	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
 		Model: s.config.AI.Embed.Model,
-		Input: embeddingInputList,
+		Input: uploadingFiles.Sections(),
 	})
 	if err == nil {
 		// success
@@ -147,7 +143,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 		return res, errors.Join(errors.New("failed to embed documents"), err)
 	}
 	matrixEmbeddings := embedRes.Embeddings
-	if len(matrixEmbeddings) != len(embeddingInputList) {
+	if len(matrixEmbeddings) != uploadingFiles.CountEmbeddings() {
 		return res, errors.New("invalid response embeddings count")
 	}
 
@@ -244,6 +240,18 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	}
 	_, centroidIdxList := compute.NewMatrix(matrixCentroids).Clone().MatrixCosineSimilarity(compute.NewMatrix(matrixEmbeddings.Value()).Clone())
 
+	// Seperate embeddings
+	for _, file := range uploadingFiles {
+		if file.title.enabled {
+			file.title.embedding = matrixEmbeddings[0]
+			matrixEmbeddings = matrixEmbeddings[1:]
+		}
+		for idx := range file.body {
+			file.body[idx].embedding = matrixEmbeddings[0]
+			matrixEmbeddings = matrixEmbeddings[1:]
+		}
+	}
+
 	// Create documents
 	logger.Sugar().Debug("creating documents")
 	newDocuments := make([]*database.Document, len(req.Documents))
@@ -251,13 +259,18 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	for idx, documentReq := range req.Documents {
 		// create document
 		file, _ := json.Marshal(req.Documents[idx].Document)
+		var title *string
+		if value := strings.TrimSpace(documentReq.Title); value != "" {
+			title = &value
+		}
 		document := &database.Document{
-			Name:        documentReq.Name,
-			ExternalID:  documentReq.ExternalID,
-			LastUpdated: time.Now(),
-			Document:    file,
-			CategoryID:  category.ID,
-			Category:    &category,
+			ExternalID:       documentReq.ExternalID,
+			Document:         file,
+			Title:            title,
+			TitleEmbeddingID: nil,
+			TitleEmbedding:   nil,
+			CategoryID:       category.ID,
+			Category:         &category,
 		}
 
 		// create embeddings
