@@ -1,6 +1,6 @@
 # VectorSearch
 
-Vectorsearch is a high-performance vector search engine that indexes AI-generated embeddings from uploaded documents, files, and text. It features a fast search interface powered by a Flat index with centroids generated using a divide-and-conquer strategy for efficient multi-core processing. Supports AVX-accelerated CPU execution, with GPU support planned. This library is to be imported as a vector search engine in projects and it's UI is not meant for production use.
+Vectorsearch is a high-performance vector search engine that indexes AI-generated embeddings from uploaded documents, files, and text. It features a fast search interface powered by a IVF Flat index with centroids generated using a divide-and-conquer strategy for efficient multi-core processing. Supports AVX-accelerated CPU execution, with GPU support planned. This library is to be imported as a vector search engine in projects and it's UI is not meant for production use.
 
 ## Demo: [https://vectorsearch.vdh.dev/](https://vectorsearch.vdh.dev/)
 
@@ -42,13 +42,13 @@ graph TD
   Cosine similarity measures the similarity between two vectors by calculating the cosine of the angle between them.
   This is used to produce a percentage match between documents and user search queries. 
 
-- **Vector Flat Index**  
-  Vector Flat Index samples a set of vectors from the dataset to act as centroid allowing search quries to be narrowed down to smaller subsets on which the vector search can occure.
+- **IVF Flat Index**  
+  IVF Flat Index samples a set of vectors from the dataset to act as centroid allowing search quries to be narrowed down to smaller subsets on which the vector search can occur.
   This indexing method enables data to be inserted without rebuilding the index (a very expensive operation in vector databases).
 
 - **Divide and Conquer**  
   Divide and Conquer strategy sub-divides the main problem into subproblems solving which can be solved easier and in parallel.
-  This solves the scalability problem of Vector Flat Index. 
+  This solves the scalability problem of IVF Flat Index. 
 
 - **Quantization**  
   Quantization reduces the memory footprint of vector embeddings without significantly impacting result accuracy.
@@ -74,7 +74,7 @@ This project has five main components:
   The `database/` directory implements PostgreSQL / SQLite client connection and auto migration schema.
 
 3. Divide and Conquer  
-  The `dnc/` directory implements the flat vector indexing implementation utilizing a custom Divide and Conquer strategy. 
+  The `dnc/` directory implements the IVF Flat Vector indexing executed by a custom Divide and Conquer strategy. 
 
 4. Divide and Conquer  
   The `server/` implements the libary methods and API methods to use the vector search engine. 
