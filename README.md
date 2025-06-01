@@ -33,29 +33,29 @@ graph TD
 
 ## Technologies Used
 
-- **Cosine Similarity**
+- **Cosine Similarity**  
   Cosine similarity measures the similarity between two vectors by calculating the cosine of the angle between them.
   This is used to produce a percentage match between documents and user search queries. 
 
-- **Vector Flat Index**
+- **Vector Flat Index**  
   Vector Flat Index samples a set of vectors from the dataset to act as centroid allowing search quries to be narrowed down to smaller subsets on which the vector search can occure.
   This indexing method enables data to be inserted without rebuilding the index (a very expensive operation in vector databases).
 
-- **Divide and Conquer**
+- **Divide and Conquer**  
   Divide and Conquer strategy sub-divides the main problem into subproblems solving which can be solved easier and in parallel.
   This solves the scalability problem of Vector Flat Index. 
 
-- **Quantization**
+- **Quantization**  
   Quantization reduces the memory footprint of vector embeddings without significantly impacting result accuracy.
   This project scales all float64 (8-byte) & float32 (4-byte) vectors to 1-byte with weights targeting 99.8% accuracy.
 
-- **Gonum**
+- **Gonum**  
   Enables AVX, AVX2 & AVX512 CPU acceleration of Cosine Similarity enabling a ×10 faster Cosine Similarity. 
 
-- **Gorgonia**
+- **Gorgonia**  
   Provides alternative AVX CPU acceleration to Gonum and will power the GPU acceleration in the future.
 
-- **Gorm**
+- **Gorm**  
   A Golang Object-Relational Mapper enabling strongly typed Relational Database queries.
 
 ## Development
