@@ -8,6 +8,7 @@ import (
 
 	"github.com/expki/go-vectorsearch/ai/httpclient"
 	"github.com/expki/go-vectorsearch/config"
+	"github.com/expki/go-vectorsearch/logger"
 )
 
 type Ollama struct {
@@ -24,6 +25,7 @@ func New(cfg config.AI) (ai *Ollama, err error) {
 
 	// Parse Embed URI
 	if cfg.Embed != nil {
+		logger.Sugar().Info("Adding AI provider: Ollama-Embed")
 		ai.embed, err = httpclient.NewProvider(*cfg.Embed)
 		if err != nil {
 			return ai, errors.Join(errors.New("embed config"), err)
@@ -32,6 +34,7 @@ func New(cfg config.AI) (ai *Ollama, err error) {
 
 	// Parse Chat URI
 	if cfg.Chat != nil {
+		logger.Sugar().Info("Adding AI provider: Ollama-Chat")
 		ai.chat, err = httpclient.NewProvider(*cfg.Chat)
 		if err != nil {
 			return ai, errors.Join(errors.New("chat config"), err)
@@ -40,6 +43,7 @@ func New(cfg config.AI) (ai *Ollama, err error) {
 
 	// Parse Generate URI
 	if cfg.Generate != nil {
+		logger.Sugar().Info("Adding AI provider: Ollama-Generate")
 		ai.generate, err = httpclient.NewProvider(*cfg.Generate)
 		if err != nil {
 			return ai, errors.Join(errors.New("generate config"), err)

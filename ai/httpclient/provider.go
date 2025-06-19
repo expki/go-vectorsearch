@@ -28,6 +28,9 @@ func NewProvider(cfg config.Provider) (provider *Provider, err error) {
 	}
 	// Parse URI
 	for _, cfgUrl := range cfg.ApiBase {
+		if cfgUrl == "" {
+			continue
+		}
 		uriPonter, err := url.Parse(cfgUrl)
 		if err != nil {
 			return provider, errors.Join(fmt.Errorf("unable to parse ollama url %q", cfgUrl), err)
@@ -37,6 +40,9 @@ func NewProvider(cfg config.Provider) (provider *Provider, err error) {
 		provider.uri = append(provider.uri, &httpurl{
 			uri: *uriPonter,
 		})
+	}
+	if len(provider.uri) == 0 {
+		return nil, errors.New("AI provider url missing")
 	}
 	provider.Token = cfg.ApiKey
 	return provider, nil
@@ -74,8 +80,12 @@ func (p *Provider) Url() (uri url.URL, done func()) {
 
 	// return url
 	return lowestConnections.uri, func() {
+		fmt.Println(1)
 		p.lock.Lock()
+		fmt.Println(2)
 		lowestConnections.connections -= 1
+		fmt.Println(3)
 		p.lock.Unlock()
+		fmt.Println(4)
 	}
 }
