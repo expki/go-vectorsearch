@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/ai/aicomms"
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -123,7 +123,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			prefix = strings.TrimSuffix(strings.TrimSpace(file.Name), ".") + ". "
 		}
 		document := Flatten(file.Document)
-		sections := Split(prefix, document, s.config.AI.Embed.GetNumCtx())
+		sections := Split(prefix, document, s.config.OpenAI.Embed.GetNumCtx())
 		for idx, section := range sections {
 			sections[idx] = fmt.Sprintf("search_document: %s", section)
 		}
@@ -133,8 +133,8 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 
 	// Get embeddings
 	logger.Sugar().Debug("generating embeddings")
-	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.AI.Embed.Model,
+	embedRes, err := s.ai.Embed(ctx, aicomms.EmbedRequest{
+		Model: s.config.OpenAI.Embed.Model,
 		Input: embeddingInputList,
 	})
 	if err == nil {

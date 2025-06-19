@@ -5,20 +5,20 @@ import (
 )
 
 type AI struct {
-	Embed    Ollama `json:"embed"`
-	Generate Ollama `json:"generate"`
-	Chat     Ollama `json:"chat"`
+	Embed    *Provider `json:"embed"`
+	Generate *Provider `json:"generate"`
+	Chat     *Provider `json:"chat"`
 }
 
-type Ollama struct {
-	Url         SingleOrSlice[string] `json:"url"`
-	Token       string                `json:"token"`
-	Model       string                `json:"model"`
-	NumCtx      int                   `json:"num_ctx"`
-	Compression bool                  `json:"compression"`
+type Provider struct {
+	Model              string                `json:"model"`
+	ApiBase            SingleOrSlice[string] `json:"api_base"`
+	ApiKey             string                `json:"api_key"`
+	NumCtx             int                   `json:"num_ctx"`
+	RequestCompression bool                  `json:"request_compression"`
 }
 
-func (c Ollama) GetNumCtx() int {
+func (c Provider) GetNumCtx() int {
 	if c.NumCtx <= 0 {
 		return 512
 	}

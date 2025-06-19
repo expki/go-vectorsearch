@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/expki/go-vectorsearch/ai/aicomms"
 	"github.com/expki/go-vectorsearch/compute"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/noop"
@@ -72,7 +73,7 @@ func main() {
 
 	// AI
 	logger.Sugar().Info("Loading AI...")
-	aiClient, err := ai.NewAI(cfg.AI)
+	aiClient, err := ai.New(cfg.Ollama, cfg.OpenAI)
 	if err != nil {
 		logger.Sugar().Fatalf("ai.New: %v", err)
 	}
@@ -244,8 +245,8 @@ func (r *zstdRequestReader) Read(p []byte) (int, error) {
 }
 
 func prefTest() {
-	noai, _ := noop.NewOllama(config.Ollama{})
-	res, _ := noai.Embed(context.TODO(), ai.EmbedRequest{
+	noai, _ := noop.NewOllama(config.Provider{})
+	res, _ := noai.Embed(context.TODO(), aicomms.EmbedRequest{
 		Input: make([]string, 1000),
 	})
 	embeddings := make([][]uint8, 0, 1000)

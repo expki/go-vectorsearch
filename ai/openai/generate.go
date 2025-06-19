@@ -1,4 +1,4 @@
-package ai
+package openai
 
 import (
 	"bufio"
@@ -10,45 +10,19 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/expki/go-vectorsearch/ai/aicomms"
+	"github.com/expki/go-vectorsearch/ai/httpclient"
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
-type GenerateRequest struct {
-	// Standard params
-	Model  string `json:"model"`
-	Prompt string `json:"prompt,omitempty"`
-	Suffix string `json:"suffix,omitempty"`
-	Images string `json:"images,omitempty"`
-	// Advanced params
-	Format    string         `json:"format,omitempty"`
-	Options   map[string]any `json:"options,omitempty"`
-	System    string         `json:"system,omitempty"`
-	Template  string         `json:"template,omitempty"`
-	Stream    bool           `json:"stream"`
-	Raw       bool           `json:"raw"`
-	KeepAlive *time.Duration `json:"keep_alive,omitempty"`
-}
-
-type GenerateResponse struct {
-	GenerateStream
-	Context            []int `json:"context"`
-	TotalDuration      int64 `json:"total_duration"`
-	LoadDuration       int64 `json:"load_duration"`
-	PromptEvalCount    int   `json:"prompt_eval_count"`
-	PromptEvalDuration int64 `json:"prompt_eval_duration"`
-	EvalCount          int   `json:"eval_count"`
-	EvalDuration       int64 `json:"eval_duration"`
-}
-
-func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response GenerateResponse, err error) {
+func (ai *OpenAI) Generate(ctx context.Context, request aicomms.GenerateRequest) (response aicomms.GenerateResponse, err error) {
 	if request.Options == nil {
 		request.Options = map[string]any{
-			"num_ctx": ai.generate.cfg.NumCtx,
+			"num_ctx": ai.generate.Cfg.NumCtx,
 		}
 	} else if _, ok := request.Options["num_ctx"]; !ok {
-		request.Options["num_ctx"] = ai.generate.cfg.NumCtx
+		request.Options["num_ctx"] = ai.generate.Cfg.NumCtx
 	}
 	// Create request body
 	request.Stream = false
@@ -59,15 +33,15 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 	// Create request
 	uri, uriDone := ai.generate.Url()
 	defer uriDone()
-	uri.Path = "/api/generate"
+	uri.Path = "/v1/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, errors.Join(errors.New("failed to create request"), err)
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.generate.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.generate.token)
+	if ai.generate.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.generate.Token)
 	}
 	// Send request
 	client, close := ai.clientManager.GetHttpClient(uri.Host)
@@ -86,7 +60,7 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 		}
 		resp.Body.Close()
 		if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
-			body, err = decompress(body)
+			body, err = httpclient.Decompress(body)
 			if err != nil {
 				return response, errors.Join(errors.New("failed to decompress response"), err)
 			}
@@ -107,14 +81,7 @@ func (ai *ai) Generate(ctx context.Context, request GenerateRequest) (response G
 	return response, nil
 }
 
-type GenerateStream struct {
-	Model     string    `json:"model"`
-	CreatedAt time.Time `json:"created_at"`
-	Response  string    `json:"response"`
-	Done      bool      `json:"done"`
-}
-
-func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stream io.Reader) {
+func (ai *OpenAI) GenerateStream(ctx context.Context, request aicomms.GenerateRequest) (stream io.Reader) {
 	request.Stream = true
 	stream, writer := io.Pipe()
 
@@ -129,7 +96,7 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 		// Create request
 		uri, uriDone := ai.generate.Url()
 		defer uriDone()
-		uri.Path = "/api/generate"
+		uri.Path = "/v1/completions"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to create request"), err))
@@ -137,8 +104,8 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 		}
 		// Set headers
 		req.Header.Set("Content-Type", "application/json")
-		if ai.generate.token != "" {
-			req.Header.Set("Authorization", "Bearer "+ai.generate.token)
+		if ai.generate.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+ai.generate.Token)
 		}
 		// Send request
 		client, close := ai.clientManager.GetHttpClient(uri.Host)
@@ -164,7 +131,7 @@ func (ai *ai) GenerateStream(ctx context.Context, request GenerateRequest) (stre
 				writer.CloseWithError(err)
 				return
 			}
-			var res GenerateStream
+			var res aicomms.GenerateStream
 			err = json.Unmarshal([]byte(line), &res)
 			if err != nil {
 				writer.CloseWithError(err)

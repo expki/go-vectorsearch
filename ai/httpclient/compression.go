@@ -1,4 +1,4 @@
-package ai
+package httpclient
 
 import (
 	_ "github.com/expki/go-vectorsearch/env"
@@ -28,13 +28,13 @@ var decoder *zstd.Decoder = func() *zstd.Decoder {
 	return decoder
 }()
 
-func compress(in []byte) (out []byte) {
+func Compress(in []byte) (out []byte) {
 	out = encoder.EncodeAll(in, out)
 	logger.Sugar().Debugf("compressed: %.2f%%", 100*(float32(len(out))/float32(len(in))))
 	return out
 }
 
-func decompress(in []byte) (out []byte, err error) {
+func Decompress(in []byte) (out []byte, err error) {
 	out, err = decoder.DecodeAll(in, out)
 	if err != nil {
 		return nil, err

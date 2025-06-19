@@ -20,7 +20,8 @@ type Config struct {
 	Server   ConfigServer `json:"server"`
 	TLS      ConfigTLS    `json:"tls"`
 	Database Database     `json:"database"`
-	AI       AI           `json:"ai"`
+	Ollama   AI           `json:"ollama"`
+	OpenAI   AI           `json:"openai"`
 	LogLevel LogLevel     `json:"log_level"`
 }
 

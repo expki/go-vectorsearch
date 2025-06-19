@@ -1,4 +1,4 @@
-package ai
+package openai
 
 import (
 	"bytes"
@@ -10,65 +10,45 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
-	"github.com/expki/go-vectorsearch/compute"
-	"github.com/expki/go-vectorsearch/config"
+	"github.com/expki/go-vectorsearch/ai/aicomms"
+	"github.com/expki/go-vectorsearch/ai/httpclient"
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
-type EmbedRequest struct {
-	// Standard params
-	Model string                       `json:"model"`
-	Input config.SingleOrSlice[string] `json:"input"`
-	// Advanced params
-	Truncate  *bool          `json:"truncate,omitempty"`
-	Options   map[string]any `json:"options,omitempty"`
-	KeepAlive *time.Duration `json:"keep_alive,omitempty"`
-}
-
-type EmbedResponse struct {
-	Model           string     `json:"model"`
-	Embeddings      Embeddings `json:"embeddings"`
-	Done            bool       `json:"done"`
-	TotalDuration   int64      `json:"total_duration"`
-	LoadDuration    int64      `json:"load_duration"`
-	PromptEvalCount int        `json:"prompt_eval_count"`
-}
-
-func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedResponse, err error) {
+func (ai *OpenAI) Embed(ctx context.Context, request aicomms.EmbedRequest) (response aicomms.EmbedResponse, err error) {
 	if request.Options == nil {
 		request.Options = map[string]any{
-			"num_ctx": ai.embed.cfg.NumCtx,
+			"num_ctx": ai.embed.Cfg.NumCtx,
 		}
 	} else if _, ok := request.Options["num_ctx"]; !ok {
-		request.Options["num_ctx"] = ai.embed.cfg.NumCtx
+		request.Options["num_ctx"] = ai.embed.Cfg.NumCtx
 	}
-	// Create request body
+	// Create request bodya
 	body, err := json.Marshal(request)
 	if err != nil {
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Request compression
-	if ai.embed.compression {
-		body = compress(body)
+	if ai.embed.Cfg.RequestCompression {
+		body = httpclient.Compress(body)
 	}
 	// Create request
 	uri, uriDone := ai.embed.Url()
 	defer uriDone()
-	uri.Path = "/api/embed"
+	uri.Path = "/v1/embeddings"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, errors.Join(errors.New("failed to create request"), err)
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.embed.compression {
+	if ai.embed.Cfg.RequestCompression {
 		req.Header.Set("Content-Encoding", "zstd")
 	}
 	req.Header.Set("Accept-Encoding", "zstd")
-	if ai.embed.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.embed.token)
+	if ai.embed.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.embed.Token)
 	}
 	// Send request
 	client, close := ai.clientManager.GetHttpClient(uri.Host)
@@ -90,7 +70,7 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 		}
 		resp.Body.Close()
 		if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
-			body, err = decompress(body)
+			body, err = httpclient.Decompress(body)
 			if err != nil {
 				return response, errors.Join(errors.New("failed to decompress response"), err)
 			}
@@ -105,34 +85,4 @@ func (ai *ai) Embed(ctx context.Context, request EmbedRequest) (response EmbedRe
 		return response, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
 	return response, nil
-}
-
-type Embeddings []Embedding
-
-func (e Embeddings) Value() [][]uint8 {
-	value := make([][]uint8, len(e))
-	for i, v := range e {
-		value[i] = v
-	}
-	return value
-}
-
-type Embedding []uint8
-
-func (e *Embedding) UnmarshalJSON(data []byte) error {
-	var vector []float32
-	err := json.Unmarshal(data, &vector)
-	if err != nil {
-		return err
-	}
-	*e = compute.QuantizeVectorFloat32(vector)
-	return nil
-}
-
-func (e Embedding) Dims() int {
-	return len(e) - 8
-}
-
-func (e Embedding) Value() []uint8 {
-	return e
 }

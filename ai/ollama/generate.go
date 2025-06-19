@@ -1,4 +1,4 @@
-package ai
+package ollama
 
 import (
 	"bufio"
@@ -9,51 +9,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
-	"time"
 
+	"github.com/expki/go-vectorsearch/ai/aicomms"
+	"github.com/expki/go-vectorsearch/ai/httpclient"
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
-type ChatRequest struct {
-	Model     string            `json:"model"`
-	Messages  []ChatMessage     `json:"messages"`
-	Tools     []json.RawMessage `json:"tools,omitempty"`
-	Format    string            `json:"format,omitempty"`
-	Options   map[string]any    `json:"options,omitempty"`
-	Stream    bool              `json:"stream"`
-	KeepAlive *time.Duration    `json:"keep_alive,omitempty"`
-}
-
-type ChatResponse struct {
-	Model              string      `json:"model"`
-	CreatedAt          time.Time   `json:"created_at"`
-	Message            ChatMessage `json:"message"`
-	Done               bool        `json:"done"`
-	Context            []int       `json:"context"`
-	TotalDuration      int64       `json:"total_duration"`
-	LoadDuration       int64       `json:"load_duration"`
-	PromptEvalCount    int         `json:"prompt_eval_count"`
-	PromptEvalDuration int64       `json:"prompt_eval_duration"`
-	EvalCount          int         `json:"eval_count"`
-	EvalDuration       int64       `json:"eval_duration"`
-}
-
-type ChatMessage struct {
-	Role      string            `json:"role"`
-	Content   string            `json:"content"`
-	Images    []string          `json:"images,omitempty"`
-	ToolCalls []json.RawMessage `json:"tool_calls,omitempty"`
-}
-
-func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatResponse, err error) {
+func (ai *Ollama) Generate(ctx context.Context, request aicomms.GenerateRequest) (response aicomms.GenerateResponse, err error) {
 	if request.Options == nil {
 		request.Options = map[string]any{
-			"num_ctx": ai.chat.cfg.NumCtx,
+			"num_ctx": ai.generate.Cfg.NumCtx,
 		}
 	} else if _, ok := request.Options["num_ctx"]; !ok {
-		request.Options["num_ctx"] = ai.chat.cfg.NumCtx
+		request.Options["num_ctx"] = ai.generate.Cfg.NumCtx
 	}
 	// Create request body
 	request.Stream = false
@@ -62,26 +31,23 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 		return response, errors.Join(errors.New("failed to marshal request body"), err)
 	}
 	// Create request
-	uri, uriDone := ai.chat.Url()
+	uri, uriDone := ai.generate.Url()
 	defer uriDone()
-	uri.Path = "/api/chat"
+	uri.Path = "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 	if err != nil {
 		return response, errors.Join(errors.New("failed to create request"), err)
 	}
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	if ai.chat.token != "" {
-		req.Header.Set("Authorization", "Bearer "+ai.chat.token)
+	if ai.generate.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+ai.generate.Token)
 	}
 	// Send request
 	client, close := ai.clientManager.GetHttpClient(uri.Host)
 	defer close()
 	resp, err := client.Do(req)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
-			return response, err
-		}
 		return response, errors.Join(errors.New("failed to send request"), err)
 	}
 	// Read response
@@ -94,7 +60,7 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 		}
 		resp.Body.Close()
 		if strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding"))) == "zstd" {
-			body, err = decompress(body)
+			body, err = httpclient.Decompress(body)
 			if err != nil {
 				return response, errors.Join(errors.New("failed to decompress response"), err)
 			}
@@ -108,39 +74,29 @@ func (ai *ai) Chat(ctx context.Context, request ChatRequest) (response ChatRespo
 	if err != nil {
 		return response, errors.Join(errors.New("failed to unmarshal response"), err)
 	}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return response, errors.Join(errors.New("failed to unmarshal response"), err)
+	}
 	return response, nil
 }
 
-type chatStream struct {
-	Model     string      `json:"model"`
-	CreatedAt time.Time   `json:"created_at"`
-	Message   ChatMessage `json:"message"`
-	Done      bool        `json:"done"`
-}
-
-func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.ReadCloser) {
-	if request.Options == nil {
-		request.Options = map[string]any{
-			"num_ctx": ai.chat.cfg.NumCtx,
-		}
-	} else if _, ok := request.Options["num_ctx"]; !ok {
-		request.Options["num_ctx"] = ai.chat.cfg.NumCtx
-	}
+func (ai *Ollama) GenerateStream(ctx context.Context, request aicomms.GenerateRequest) (stream io.Reader) {
 	request.Stream = true
 	stream, writer := io.Pipe()
 
 	go func() {
 		defer writer.Close()
 		// Create request body
+
 		body, err := json.Marshal(request)
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to marshal request body"), err))
-			return
 		}
 		// Create request
-		uri, uriDone := ai.chat.Url()
+		uri, uriDone := ai.generate.Url()
 		defer uriDone()
-		uri.Path = "/api/chat"
+		uri.Path = "/api/generate"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(body))
 		if err != nil {
 			writer.CloseWithError(errors.Join(errors.New("failed to create request"), err))
@@ -148,8 +104,8 @@ func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.Re
 		}
 		// Set headers
 		req.Header.Set("Content-Type", "application/json")
-		if ai.chat.token != "" {
-			req.Header.Set("Authorization", "Bearer "+ai.chat.token)
+		if ai.generate.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+ai.generate.Token)
 		}
 		// Send request
 		client, close := ai.clientManager.GetHttpClient(uri.Host)
@@ -165,15 +121,23 @@ func (ai *ai) ChatStream(ctx context.Context, request ChatRequest) (stream io.Re
 			return
 		}
 		// Read response
-		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			var res chatStream
-			err = json.Unmarshal([]byte(scanner.Text()), &res)
+		reader := bufio.NewReader(resp.Body)
+		for {
+			line, err := reader.ReadString('\n')
+			if err == io.EOF {
+				break
+			}
 			if err != nil {
 				writer.CloseWithError(err)
 				return
 			}
-			writer.Write([]byte(res.Message.Content))
+			var res aicomms.GenerateStream
+			err = json.Unmarshal([]byte(line), &res)
+			if err != nil {
+				writer.CloseWithError(err)
+				return
+			}
+			writer.Write([]byte(res.Response))
 			if res.Done {
 				break
 			}

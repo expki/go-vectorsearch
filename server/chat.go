@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/ai/aicomms"
 	"github.com/expki/go-vectorsearch/database"
 	_ "github.com/expki/go-vectorsearch/env"
 	"github.com/expki/go-vectorsearch/logger"
@@ -123,7 +123,7 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 	}
 
 	// Create history chat
-	messages := make([]ai.ChatMessage, len(req.History), len(req.History)+1)
+	messages := make([]aicomms.ChatMessage, len(req.History), len(req.History)+1)
 	for idx, content := range req.History {
 		var role string
 		if idx%2 == 0 {
@@ -131,7 +131,7 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 		} else {
 			role = "assistant"
 		}
-		messages[idx] = ai.ChatMessage{
+		messages[idx] = aicomms.ChatMessage{
 			Role:    role,
 			Content: content,
 		}
@@ -166,14 +166,14 @@ func (s *Server) Chat(ctx context.Context, req ChatRequest) (resStream io.ReadCl
 	query.WriteString(req.Text)
 
 	// Construct message
-	messages = append(messages, ai.ChatMessage{
+	messages = append(messages, aicomms.ChatMessage{
 		Role:    "user",
 		Content: query.String(),
 	})
 
 	// Start chat
-	chat := s.ai.ChatStream(ctx, ai.ChatRequest{
-		Model:    s.config.AI.Chat.Model,
+	chat := s.ai.ChatStream(ctx, aicomms.ChatRequest{
+		Model:    s.config.OpenAI.Chat.Model,
 		Messages: messages,
 	})
 

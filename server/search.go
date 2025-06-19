@@ -13,7 +13,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/expki/go-vectorsearch/ai"
+	"github.com/expki/go-vectorsearch/ai/aicomms"
 	"github.com/expki/go-vectorsearch/compute"
 	"github.com/expki/go-vectorsearch/config"
 	"github.com/expki/go-vectorsearch/database"
@@ -124,8 +124,8 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 
 	// Get embedding
 	logger.Sugar().Debug("embedding search query")
-	embedRes, err := s.ai.Embed(ctx, ai.EmbedRequest{
-		Model: s.config.AI.Embed.Model,
+	embedRes, err := s.ai.Embed(ctx, aicomms.EmbedRequest{
+		Model: s.config.OpenAI.Embed.Model,
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
 	})
 	if err == nil {

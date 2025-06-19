@@ -1,4 +1,4 @@
-package ai
+package httpclient
 
 import (
 	"context"
@@ -127,5 +127,4 @@ func (c *clientInstance) Close() {
 		c.lockCloser.Unlock()
 	}
 	c.lockRequests.Unlock()
-	return
 }
