@@ -80,12 +80,8 @@ func (p *Provider) Url() (uri url.URL, done func()) {
 
 	// return url
 	return lowestConnections.uri, func() {
-		fmt.Println(1)
 		p.lock.Lock()
-		fmt.Println(2)
 		lowestConnections.connections -= 1
-		fmt.Println(3)
 		p.lock.Unlock()
-		fmt.Println(4)
 	}
 }
