@@ -111,10 +111,10 @@ func (ai *ai) EmbedModel() (model string) {
 
 // GenerateModel returns the target model.
 func (ai *ai) GenerateModel() (model string) {
-	if ai.ollama.CanEmbed() {
+	if ai.ollama.CanGenerate() {
 		return ai.ollama.Cfg.Generate.Model
 	}
-	if ai.openai.CanEmbed() {
+	if ai.openai.CanGenerate() {
 		return ai.openai.Cfg.Generate.Model
 	}
 	return
@@ -122,10 +122,10 @@ func (ai *ai) GenerateModel() (model string) {
 
 // ChatModel returns the target model.
 func (ai *ai) ChatModel() (model string) {
-	if ai.ollama.CanEmbed() {
+	if ai.ollama.CanChat() {
 		return ai.ollama.Cfg.Chat.Model
 	}
-	if ai.openai.CanEmbed() {
+	if ai.openai.CanChat() {
 		return ai.openai.Cfg.Chat.Model
 	}
 	return
