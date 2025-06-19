@@ -125,7 +125,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequest) (res SearchRespo
 	// Get embedding
 	logger.Sugar().Debug("embedding search query")
 	embedRes, err := s.ai.Embed(ctx, aicomms.EmbedRequest{
-		Model: s.config.OpenAI.Embed.Model,
+		Model: s.ai.EmbedModel(),
 		Input: []string{fmt.Sprintf("search_query: %s", req.Text)},
 	})
 	if err == nil {

@@ -97,3 +97,36 @@ func (ai *ai) ChatCtxNum() (ctxnum int) {
 	}
 	return -math.MaxInt
 }
+
+// EmbedModel returns the target model.
+func (ai *ai) EmbedModel() (model string) {
+	if ai.ollama.CanEmbed() {
+		return ai.ollama.Cfg.Embed.Model
+	}
+	if ai.openai.CanEmbed() {
+		return ai.openai.Cfg.Embed.Model
+	}
+	return
+}
+
+// GenerateModel returns the target model.
+func (ai *ai) GenerateModel() (model string) {
+	if ai.ollama.CanEmbed() {
+		return ai.ollama.Cfg.Generate.Model
+	}
+	if ai.openai.CanEmbed() {
+		return ai.openai.Cfg.Generate.Model
+	}
+	return
+}
+
+// ChatModel returns the target model.
+func (ai *ai) ChatModel() (model string) {
+	if ai.ollama.CanEmbed() {
+		return ai.ollama.Cfg.Chat.Model
+	}
+	if ai.openai.CanEmbed() {
+		return ai.openai.Cfg.Chat.Model
+	}
+	return
+}

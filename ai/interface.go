@@ -33,4 +33,13 @@ type AI interface {
 
 	// ChatCtxNum returns the supported input context size.
 	ChatCtxNum() (ctxnum int)
+
+	// EmbedModel returns the target model.
+	EmbedModel() (model string)
+
+	// GenerateModel returns the target model.
+	GenerateModel() (model string)
+
+	// ChatCtxModel returns the target model.
+	ChatModel() (model string)
 }

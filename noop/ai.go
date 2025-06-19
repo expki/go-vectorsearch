@@ -107,3 +107,18 @@ func (*noai) GenerateCtxNum() (ctxnum int) {
 func (*noai) ChatCtxNum() (ctxnum int) {
 	return -math.MaxInt
 }
+
+// EmbedModel returns the target model.
+func (*noai) EmbedModel() (model string) {
+	return "noai"
+}
+
+// GenerateModel returns the target model.
+func (*noai) GenerateModel() (model string) {
+	return "noai"
+}
+
+// ChatModel returns the target model.
+func (*noai) ChatModel() (model string) {
+	return "noai"
+}

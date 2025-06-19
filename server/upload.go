@@ -134,7 +134,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 	// Get embeddings
 	logger.Sugar().Debug("generating embeddings")
 	embedRes, err := s.ai.Embed(ctx, aicomms.EmbedRequest{
-		Model: s.config.OpenAI.Embed.Model,
+		Model: s.ai.EmbedModel(),
 		Input: embeddingInputList,
 	})
 	if err == nil {
