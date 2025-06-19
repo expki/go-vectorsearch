@@ -89,5 +89,4 @@ type DatabaseProvider uint8
 const (
 	DatabaseProvider_Sqlite DatabaseProvider = iota + 1
 	DatabaseProvider_PostgreSQL
-	// Add more database types as needed
 )
