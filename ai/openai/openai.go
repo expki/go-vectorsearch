@@ -11,6 +11,7 @@ import (
 )
 
 type OpenAI struct {
+	Cfg           config.AI
 	clientManager *httpclient.ClientManager
 	chat          *httpclient.Provider
 	generate      *httpclient.Provider
@@ -19,6 +20,7 @@ type OpenAI struct {
 
 func New(cfg config.AI) (ai *OpenAI, err error) {
 	ai = new(OpenAI)
+	ai.Cfg = cfg
 
 	// Parse Embed URI
 	if cfg.Embed != nil {

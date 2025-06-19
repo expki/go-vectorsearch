@@ -1,6 +1,8 @@
 package config
 
 import (
+	"math"
+
 	_ "github.com/expki/go-vectorsearch/env"
 )
 
@@ -20,7 +22,7 @@ type Provider struct {
 
 func (c Provider) GetNumCtx() int {
 	if c.NumCtx <= 0 {
-		return 512
+		return -math.MaxInt
 	}
 	return c.NumCtx
 }

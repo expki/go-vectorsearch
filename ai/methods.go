@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 
 	"github.com/expki/go-vectorsearch/ai/aicomms"
 	_ "github.com/expki/go-vectorsearch/env"
@@ -62,4 +63,37 @@ func (ai *ai) ChatStream(ctx context.Context, request aicomms.ChatRequest) (stre
 		return ai.openai.ChatStream(ctx, request)
 	}
 	return nil
+}
+
+// EmbedCtxNum returns the supported input context size.
+func (ai *ai) EmbedCtxNum() (ctxnum int) {
+	if ai.ollama.CanEmbed() {
+		return ai.ollama.Cfg.Embed.GetNumCtx()
+	}
+	if ai.openai.CanEmbed() {
+		return ai.openai.Cfg.Embed.GetNumCtx()
+	}
+	return -math.MaxInt
+}
+
+// GenerateCtxNum returns the supported input context size.
+func (ai *ai) GenerateCtxNum() (ctxnum int) {
+	if ai.ollama.CanGenerate() {
+		return ai.ollama.Cfg.Generate.GetNumCtx()
+	}
+	if ai.openai.CanGenerate() {
+		return ai.openai.Cfg.Generate.GetNumCtx()
+	}
+	return -math.MaxInt
+}
+
+// ChatCtxNum returns the supported input context size.
+func (ai *ai) ChatCtxNum() (ctxnum int) {
+	if ai.ollama.CanChat() {
+		return ai.ollama.Cfg.Chat.GetNumCtx()
+	}
+	if ai.openai.CanChat() {
+		return ai.openai.Cfg.Chat.GetNumCtx()
+	}
+	return -math.MaxInt
 }

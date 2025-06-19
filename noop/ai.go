@@ -92,3 +92,18 @@ func (n *noai) ChatStream(_ context.Context, request aicomms.ChatRequest) (strea
 	n.random.Read(raw)
 	return io.NopCloser(bytes.NewBuffer([]byte(hex.EncodeToString(raw))))
 }
+
+// EmbedCtxNum returns the supported input context size.
+func (*noai) EmbedCtxNum() (ctxnum int) {
+	return -math.MaxInt
+}
+
+// GenerateCtxNum returns the supported input context size.
+func (*noai) GenerateCtxNum() (ctxnum int) {
+	return -math.MaxInt
+}
+
+// ChatCtxNum returns the supported input context size.
+func (*noai) ChatCtxNum() (ctxnum int) {
+	return -math.MaxInt
+}

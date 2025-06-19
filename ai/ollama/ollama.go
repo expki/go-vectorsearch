@@ -11,6 +11,7 @@ import (
 )
 
 type Ollama struct {
+	Cfg           config.AI
 	clientManager *httpclient.ClientManager
 	chat          *httpclient.Provider
 	generate      *httpclient.Provider
@@ -19,6 +20,7 @@ type Ollama struct {
 
 func New(cfg config.AI) (ai *Ollama, err error) {
 	ai = new(Ollama)
+	ai.Cfg = cfg
 
 	// Parse Embed URI
 	if cfg.Embed != nil {

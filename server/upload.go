@@ -123,7 +123,7 @@ func (s *Server) Upload(ctx context.Context, req UploadRequest) (res UploadRespo
 			prefix = strings.TrimSuffix(strings.TrimSpace(file.Name), ".") + ". "
 		}
 		document := Flatten(file.Document)
-		sections := Split(prefix, document, s.config.OpenAI.Embed.GetNumCtx())
+		sections := Split(prefix, document, s.ai.EmbedCtxNum())
 		for idx, section := range sections {
 			sections[idx] = fmt.Sprintf("search_document: %s", section)
 		}

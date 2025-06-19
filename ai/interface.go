@@ -24,4 +24,13 @@ type AI interface {
 
 	// Chat facilitates a conversation between the AI and a user with documentation as context as a byte stream.
 	ChatStream(ctx context.Context, request aicomms.ChatRequest) (stream io.ReadCloser)
+
+	// EmbedCtxNum returns the supported input context size.
+	EmbedCtxNum() (ctxnum int)
+
+	// GenerateCtxNum returns the supported input context size.
+	GenerateCtxNum() (ctxnum int)
+
+	// ChatCtxNum returns the supported input context size.
+	ChatCtxNum() (ctxnum int)
 }
