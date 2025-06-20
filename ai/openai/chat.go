@@ -10,8 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
-	"time"
 
 	"github.com/expki/go-vectorsearch/ai/aicomms"
 	"github.com/expki/go-vectorsearch/ai/httpclient"
@@ -83,10 +83,19 @@ func (ai *OpenAI) Chat(ctx context.Context, request aicomms.ChatRequest) (respon
 }
 
 type chatStream struct {
-	Model     string              `json:"model"`
-	CreatedAt time.Time           `json:"created_at"`
-	Message   aicomms.ChatMessage `json:"message"`
-	Done      bool                `json:"done"`
+	Model            string   `json:"model"`
+	CreatedTimestamp int64    `json:"created"`
+	Choices          []choice `json:"choices"`
+}
+
+type choice struct {
+	Index        int    `json:"index"`
+	Delta        delta  `json:"delta"`
+	FinishReason string `json:"finish_reason"`
+}
+
+type delta struct {
+	Content string `json:"content"`
 }
 
 func (ai *OpenAI) ChatStream(ctx context.Context, request aicomms.ChatRequest) (stream io.ReadCloser) {
@@ -138,15 +147,26 @@ func (ai *OpenAI) ChatStream(ctx context.Context, request aicomms.ChatRequest) (
 		// Read response
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
+			line := scanner.Text()
+			startIdx := strings.IndexRune(line, '{')
+			if startIdx == -1 {
+				continue
+			}
+			line = line[startIdx:]
 			var res chatStream
-			err = json.Unmarshal([]byte(scanner.Text()), &res)
+			err = json.Unmarshal([]byte(line), &res)
 			if err != nil {
 				writer.CloseWithError(err)
 				return
 			}
-			writer.Write([]byte(res.Message.Content))
-			if res.Done {
-				break
+			sort.Slice(res.Choices, func(i, j int) bool {
+				return res.Choices[i].Index < res.Choices[j].Index
+			})
+			for _, choice := range res.Choices {
+				writer.Write([]byte(choice.Delta.Content))
+				if choice.FinishReason != "" {
+					return
+				}
 			}
 		}
 	}()
