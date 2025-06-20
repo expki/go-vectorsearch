@@ -112,6 +112,10 @@ func KMeansDivideAndConquer(ctx context.Context, db *database.Database, category
 	} else {
 		return errors.Join(errors.New("failed to read database embeddings"), err)
 	}
+	if dataWriter.total == 0 {
+		logger.Sugar().Debug("no embeddings in database")
+		return
+	}
 
 	// divide and conquer
 	logger.Sugar().Debug("Starting Divide and Conquer")
